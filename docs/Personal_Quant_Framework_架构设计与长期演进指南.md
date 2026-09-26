@@ -1401,6 +1401,7 @@ Git Commit
 - Max Drawdown
 - Sharpe
 - Unit Tests
+- 可选的静态回测结果图（价格涨跌、成交位置与权益曲线）
 
 ---
 

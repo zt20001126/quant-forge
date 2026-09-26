@@ -18,6 +18,7 @@ V0.1 支持单标的日线 CSV、MA Cross、目标仓位意图、市价执行、
 | `quant.portfolio` | 现金、单标的持仓、Trade 入账、账户估值 | 生成信号、决定成交价 |
 | `quant.engine` | 推进生命周期、协作公开接口、汇总 Trade/订单结果/权益快照 | MA 计算、撮合公式、佣金公式、绩效算法 |
 | `quant.analytics` | 从 BacktestResult 计算收益、年化收益、最大回撤和 Sharpe | 交易循环或账户修改 |
+| `quant.visualization` | 读取 Bar 序列与 BacktestResult，展示收盘价方向、成交点和权益曲线 | 修改回测结果、生成信号或更改账户 |
 | `examples` | 组装协作者并展示结果 | 绕过公开边界实现交易规则 |
 
 目前没有独立风险管理阶段；V0.1 的风险边界是明确的基础不变量，不代表提供可配置的交易风控系统。没有预建未使用的 `risk`、`config`、事件总线或工厂模块。
@@ -26,12 +27,14 @@ V0.1 支持单标的日线 CSV、MA Cross、目标仓位意图、市价执行、
 
 ```text
 examples → engine + 具体实现
+examples → visualization
 engine → core + DataFeed/Strategy 协议 + Broker + Portfolio
 data / indicators / strategy / broker / portfolio → core
 analytics → engine 的只读结果模型 + 标准库
+visualization → core.Bar + engine.BacktestResult + Matplotlib
 ```
 
-`core` 不依赖其他业务模块或第三方行情实现。Strategy 依赖领域 Bar/OrderIntent 与指标函数，不依赖 CSV、Broker 或 Portfolio。Engine 通过 DataFeed/Strategy 协议和 Broker/Portfolio 的公开方法编排。Broker 与 Portfolio 之间不互调：Broker 返回 Trade，Engine 将成交交给 Portfolio。Analytics 只接受结果对象。
+`core` 不依赖其他业务模块或第三方行情实现。Strategy 依赖领域 Bar/OrderIntent 与指标函数，不依赖 CSV、Broker 或 Portfolio。Engine 通过 DataFeed/Strategy 协议和 Broker/Portfolio 的公开方法编排。Broker 与 Portfolio 之间不互调：Broker 返回 Trade，Engine 将成交交给 Portfolio。Analytics 只接受结果对象；Visualization 只读取行情与回测结果。
 
 V0.1 只有一个 Broker 实现，Engine 对其具体类型 `SimulatedBroker` 有显式依赖；目前这不构成抽象缺口，不为尚不存在的第二实现增加额外接口层。
 
@@ -73,10 +76,14 @@ Signal Time 是策略观察到完整 Bar 的时点；Execution Time 必须晚于
 
 这些是假设明确的研究指标，不构成对真实市场成交或收益的保证。
 
+## 可视化
+
+`plot_backtest(bars, result)` 使用独立展示层绘图。价格面板按每日 Close 相对前一日的变化标注涨跌，并按 Trade 的实际执行时间和成交价标出买入/卖出；权益面板展示每日组合价值。绘图不改变交易数据或账户状态。示例在打印摘要后弹出 Matplotlib 窗口。
+
 ## 测试与工具
 
 测试放在 `tests/unit/` 和 `tests/integration/`，通过 pytest 发现；行为基准包含非法数据、指标暖机、策略信号、成交成本、账户不变量、下一根 Open 执行、末根信号过期和 CSV 到绩效结果的集成流程。开发工具由 `pyproject.toml` 的 `dev` 依赖提供：pytest、ruff、mypy。标准命令见 README。
 
 ## 已知范围边界
 
-当前仅有单标的日线、CSV、MA Cross、市价单和多头账户；没有复权/公司行为处理、RiskManager、多资产、做空、杠杆、优化、Walk Forward、事件驱动、数据库、可视化或实盘能力。新增或变更上述架构边界时，先说明原因与迁移影响，再同步本文件、测试和 V0.1 TODO。
+当前仅有单标的日线、CSV、MA Cross、市价单和多头账户；可视化仅支持回测结果的静态研究图，不包含交互式图表或实时行情。没有复权/公司行为处理、RiskManager、多资产、做空、杠杆、优化、Walk Forward、事件驱动、数据库或实盘能力。新增或变更上述架构边界时，先说明原因与迁移影响，再同步本文件、测试和 V0.1 TODO。

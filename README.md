@@ -12,6 +12,7 @@ QuantForge 是独立的个人量化研究与回测项目。当前版本为 **V0.
 - 单标的多头 Portfolio，支持小数股、成交入账及每日估值。
 - 回测交易记录、订单结果、未执行订单、Equity 曲线。
 - 总收益、年化收益、最大回撤和 Sharpe Ratio。
+- 示例运行后显示收盘价涨跌、买卖成交点和组合权益曲线。
 
 V0.1 不含 RiskManager 模块；非法数量、资金不足、禁止负持仓等边界由现有领域校验、Broker 和 Portfolio 处理。
 
@@ -67,12 +68,16 @@ python -m pip install -e ".[dev]"
 python -m examples.ma_cross_backtest
 ```
 
-示例默认读取 `data/stock_real.csv`，输出交易数、期末权益及绩效指标。也可以在 Python 中传入自己的 CSV：
+示例默认读取 `data/stock_real.csv`，输出交易数、期末权益及绩效指标，随后弹出回测图表窗口。图中上半部分显示收盘价、逐日涨跌和买卖成交，下半部分显示组合权益。关闭图表窗口后程序退出。也可以在 Python 中传入自己的 CSV：
 
 ```python
 from examples.ma_cross_backtest import run_example
+from quant.data.csv_feed import CSVDataFeed
+from quant.visualization import plot_backtest
 
-result, metrics = run_example("path/to/bars.csv", symbol="DEMO")
+csv_path = "path/to/bars.csv"
+result, metrics = run_example(csv_path, symbol="DEMO")
+plot_backtest(list(CSVDataFeed(csv_path, "DEMO")), result)
 print(len(result.trades), metrics.total_return)
 ```
 
@@ -106,6 +111,8 @@ V0.2 及以后能力按 [V0.1 TODO 与演进记录](docs/V0.1_TODO.md) 和长期
 ## 开发规范与文档
 
 开始修改前阅读 [AGENTS.md](AGENTS.md) 与 [当前架构](docs/architecture.md)。更完整的设计依据见[长期架构指南](docs/Personal_Quant_Framework_架构设计与长期演进指南.md)。文档中的实现状态以代码和测试为准。
+
+版本级变化见 [CHANGELOG.md](CHANGELOG.md)；重要开发任务的背景与验证记录见 [docs/changes/README.md](docs/changes/README.md)。
 
 ## Disclaimer
 
