@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+
 from quant.core.enums import Side
 from quant.core.position import Position
 from quant.core.trade import Trade
@@ -21,6 +22,8 @@ class AccountSnapshot:
 
 
 class Portfolio:
+    """V0.1 账户状态唯一所有者，维护现金、单标的持仓并负责估值。"""
+
     def __init__(self, initial_cash: float, symbol: str) -> None:
         validate_positive_finite(initial_cash, "initial_cash")
         if not symbol or not symbol.strip():
@@ -43,12 +46,14 @@ class Portfolio:
         return self._position.quantity
 
     def apply_trade(self, trade: Trade) -> None:
+        """根据已经成交的 Trade 更新现金与持仓，不自行判断成交。"""
         if trade.symbol != self.symbol:
             raise ValueError("成交标的与账户标的不一致。")
         if trade.trade_id in self._applied_trade_ids:
             raise ValueError("重复入账的 Trade。")
         amount = trade.price * trade.quantity
         if trade.side == Side.BUY:
+            # 买入成本含佣金，按含费成本更新均价，保证现金和持仓账面一致。
             total_cost = amount + trade.commission
             if total_cost > self._cash + 1e-8:
                 raise ValueError("账户现金不足，拒绝买入成交。")
@@ -61,11 +66,15 @@ class Portfolio:
             if abs(self._cash) < 1e-8:
                 self._cash = 0.0
         else:
+            # 卖出只减少已有持仓，手续费从回款中扣除并计入已实现盈亏。
             if trade.quantity > self._position.quantity + 1e-8:
                 raise ValueError("卖出数量超过持仓，禁止做空。")
             if self._cash + amount - trade.commission < -1e-8:
                 raise ValueError("卖出费用超过可用资金，拒绝入账。")
-            realized = (trade.price - self._position.average_price) * trade.quantity - trade.commission
+            realized = (
+                (trade.price - self._position.average_price) * trade.quantity
+                - trade.commission
+            )
             self._position.realized_pnl += realized
             self._cash += amount - trade.commission
             self._position.quantity -= trade.quantity

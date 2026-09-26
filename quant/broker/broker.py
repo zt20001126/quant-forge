@@ -29,6 +29,7 @@ class SimulatedBroker:
         """在给定现金与执行价下，用单调二分求含佣金的最大可买数量。
 
         可插拔佣金模型需满足费用非负且随数量单调不减，二分边界才成立。
+        这里的佣金调用仅用于报价；最终实际费用由 execute 生成的 Trade 记录并入账。
         """
         if cash <= 0 or execution_price <= 0:
             return 0.0
@@ -46,8 +47,11 @@ class SimulatedBroker:
         return lower
 
     def execute(self, order: Order, bar: Bar) -> OrderResult:
+        """按执行 Bar 的 Open 加滑点，并为成交结果计算一次最终佣金。"""
         if order.execution_time != bar.datetime:
-            return OrderResult(order.order_id, OrderStatus.REJECTED, "订单执行时间与行情时间不一致。")
+            return OrderResult(
+                order.order_id, OrderStatus.REJECTED, "订单执行时间与行情时间不一致。"
+            )
         if order.symbol != bar.symbol:
             return OrderResult(order.order_id, OrderStatus.REJECTED, "订单标的与行情标的不一致。")
 

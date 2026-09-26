@@ -11,6 +11,8 @@ from quant.core.trade import Trade
 
 @dataclass(frozen=True)
 class EquitySnapshot:
+    """单个估值时点的现金、市值和组合总资产。"""
+
     timestamp: datetime
     cash: float
     symbol: str
@@ -25,13 +27,15 @@ class PendingOrder:
     order_id: str
     symbol: str
     side: Side
-    quantity: float
+    quantity: Optional[float]
     signal_time: datetime
     status: str
 
 
 @dataclass(frozen=True)
 class BacktestResult:
+    """供 Analytics 与示例消费的回测产物，不包含运行中可变账户状态。"""
+
     initial_cash: float
     trades: Tuple[Trade, ...]
     equity_curve: Tuple[EquitySnapshot, ...]

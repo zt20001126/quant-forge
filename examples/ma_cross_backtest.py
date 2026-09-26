@@ -5,8 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Tuple, Union
 
-from quant.analytics.metrics import calculate_performance
-from quant.analytics.metrics import PerformanceMetrics
+from quant.analytics.metrics import PerformanceMetrics, calculate_performance
 from quant.broker.broker import SimulatedBroker
 from quant.broker.commission import PercentageCommission
 from quant.broker.slippage import NoSlippage
@@ -17,7 +16,9 @@ from quant.portfolio.portfolio import Portfolio
 from quant.strategy.ma_cross import MACrossStrategy
 
 
-def run_example(data_path: Union[str, Path], symbol: str = "DEMO") -> Tuple[BacktestResult, PerformanceMetrics]:
+def run_example(
+    data_path: Union[str, Path], symbol: str = "DEMO"
+) -> Tuple[BacktestResult, PerformanceMetrics]:
     feed = CSVDataFeed(data_path, symbol)
     broker = SimulatedBroker(PercentageCommission(0.0003), NoSlippage())
     portfolio = Portfolio(100_000, symbol)

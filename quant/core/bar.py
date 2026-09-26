@@ -13,6 +13,8 @@ from quant.core.validation import (
 
 @dataclass(frozen=True)
 class Bar:
+    """经过校验的单标的 OHLCV 行情；不携带 CSV 等数据源细节。"""
+
     symbol: str
     datetime: datetime
     open: float

@@ -16,6 +16,8 @@ from quant.strategy.base import Strategy
 
 
 class BacktestEngine:
+    """编排单标的日线回测，不实现策略、成交或绩效公式。"""
+
     def __init__(
         self,
         data_feed: DataFeed,
@@ -30,6 +32,7 @@ class BacktestEngine:
         self._has_run = False
 
     def run(self) -> BacktestResult:
+        """执行生命周期：先处理前一根信号，再估值并读取当前 Bar 产生新信号。"""
         if self._has_run:
             raise RuntimeError("BacktestEngine 实例只能运行一次；重复回测请重新创建协作者。")
         self._has_run = True
@@ -47,6 +50,7 @@ class BacktestEngine:
             due_intents = pending
             pending = []
             for intent in due_intents:
+                # 意图来自上一根完整收盘 Bar；本根 Open 执行，避免同收盘前视。
                 order = self._create_order(intent, bar, "order-{:06d}".format(next_order_number))
                 if order is None:
                     target_holding = self.portfolio.position_quantity > 0
@@ -72,6 +76,7 @@ class BacktestEngine:
                     else:
                         trades.append(result.trade)
 
+            # 当日成交入账后按 Close 估值，快照因此同时反映成交与收盘市值。
             account = self.portfolio.mark_to_market(bar.close)
             equity.append(
                 EquitySnapshot(
@@ -105,26 +110,16 @@ class BacktestEngine:
                     next_order_number += 1
             history.append(bar)
 
-        pending_records = tuple(terminal_pending) + tuple(
-            PendingOrder(
-                order_id=order.order_id,
-                symbol=order.symbol,
-                side=order.side,
-                quantity=order.quantity,
-                signal_time=order.signal_time,
-                status="EXPIRED_NO_NEXT_BAR",
-            )
-            for order in pending
-        )
         return BacktestResult(
             initial_cash=self.portfolio.initial_cash,
             trades=tuple(trades),
             equity_curve=tuple(equity),
             order_results=tuple(order_results),
-            pending_orders=pending_records,
+            pending_orders=tuple(terminal_pending),
         )
 
     def _create_order(self, intent: OrderIntent, bar: Bar, order_id: str) -> Optional[Order]:
+        """执行时才按当前 Open 和账户现金确定数量，不读取未来价格。"""
         if intent.signal_time >= bar.datetime:
             raise ValueError("订单只能在信号之后的 Bar 执行。")
         if intent.symbol != bar.symbol:

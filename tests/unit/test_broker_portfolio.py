@@ -1,11 +1,7 @@
 """Broker 成交成本与 Portfolio 账户不变量测试。"""
 
-import sys
 import unittest
 from datetime import datetime, timedelta
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from quant.broker.broker import SimulatedBroker
 from quant.broker.commission import PercentageCommission
@@ -72,28 +68,6 @@ class BrokerPortfolioTest(unittest.TestCase):
         portfolio.apply_trade(sell_trade)
         self.assertEqual(portfolio.cash, 1000)
         self.assertEqual(portfolio.position_quantity, 0)
-
-    def test_successful_sale_restores_cash_without_negative_position(self) -> None:
-        start = datetime(2024, 1, 1)
-        buy_time = start + timedelta(days=1)
-        sell_time = start + timedelta(days=2)
-        portfolio = Portfolio(1000, "AAA")
-        broker = SimulatedBroker(PercentageCommission(0), FixedSlippage(0))
-        buy_order = Order("buy", "AAA", Side.BUY, 100, OrderType.MARKET, start, buy_time)
-        buy_trade = broker.execute(
-            buy_order, Bar("AAA", buy_time, 10, 10, 10, 10, 1)
-        ).trade
-        assert buy_trade is not None
-        portfolio.apply_trade(buy_trade)
-        sell_order = Order("sell", "AAA", Side.SELL, 100, OrderType.MARKET, buy_time, sell_time)
-        sell_trade = broker.execute(
-            sell_order, Bar("AAA", sell_time, 10, 10, 10, 10, 1)
-        ).trade
-        assert sell_trade is not None
-        portfolio.apply_trade(sell_trade)
-        self.assertEqual(portfolio.cash, 1000)
-        self.assertEqual(portfolio.position_quantity, 0)
-
 
 if __name__ == "__main__":
     unittest.main()

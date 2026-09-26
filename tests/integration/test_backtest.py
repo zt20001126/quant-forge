@@ -1,11 +1,8 @@
 """CSV 到绩效摘要的新框架集成测试。"""
 
-import sys
 import tempfile
 import unittest
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from quant.analytics.metrics import calculate_performance
 from quant.broker.broker import SimulatedBroker

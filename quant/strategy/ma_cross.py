@@ -10,6 +10,8 @@ from quant.indicators.moving_average import simple_moving_average
 
 
 class MACrossStrategy:
+    """依据截至当前 Bar 的收盘历史产生空仓/满仓目标意图。"""
+
     def __init__(self, short_window: int = 5, long_window: int = 20) -> None:
         if isinstance(short_window, bool) or isinstance(long_window, bool):
             raise ValueError("均线窗口必须是正整数。")
@@ -20,6 +22,7 @@ class MACrossStrategy:
         self._last_target: Optional[int] = None
 
     def on_bar(self, bar: Bar, history: Sequence[Bar]) -> list[OrderIntent]:
+        """只使用当前及过去 Bar；当前收盘信号留待后续 Bar 执行。"""
         bars = list(history)
         if not bars or bars[-1] != bar:
             bars.append(bar)

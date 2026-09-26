@@ -1,13 +1,14 @@
 """成交滑点模型。"""
 
-from typing import Protocol
 import math
+from typing import Protocol
 
 from quant.core.enums import Side
 
 
 class SlippageModel(Protocol):
     def apply(self, price: float, side: Side) -> float:
+        """按买卖方向调整参考价；买入不应获得更优价格，卖出亦然。"""
         ...
 
 
@@ -23,6 +24,7 @@ class FixedSlippage:
         self.amount = float(amount)
 
     def apply(self, price: float, side: Side) -> float:
+        """买入提高、卖出降低参考价，以表达不利成交方向。"""
         return price + self.amount if side == Side.BUY else price - self.amount
 
 

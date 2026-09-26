@@ -14,6 +14,8 @@ from quant.core.validation import (
 
 @dataclass(frozen=True)
 class Trade:
+    """Broker 确认的模拟成交事实，Portfolio 只根据 Trade 更新账户。"""
+
     trade_id: str
     order_id: str
     symbol: str

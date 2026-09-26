@@ -3,10 +3,8 @@
 import math
 import statistics
 from dataclasses import dataclass
-from typing import Sequence
 
 from quant.engine.models import BacktestResult
-
 
 TRADING_DAYS_PER_YEAR = 252
 
@@ -23,6 +21,7 @@ def calculate_performance(
     result: BacktestResult,
     annual_risk_free_rate: float = 0.0,
 ) -> PerformanceMetrics:
+    """仅消费回测结果计算指标，初始资金作为收益和回撤的起始基准。"""
     if not math.isfinite(annual_risk_free_rate) or annual_risk_free_rate <= -1:
         raise ValueError("无风险年利率必须是大于 -100% 的有限值。")
     if not result.equity_curve:
@@ -39,19 +38,28 @@ def calculate_performance(
     if values[-1] == 0:
         annualized_return = -1.0
     else:
-        annualized_return = (values[-1] / result.initial_cash) ** (TRADING_DAYS_PER_YEAR / periods) - 1
+        # 用观察到的日数年化；该值是历史区间 CAGR，不代表未来收益预测。
+        annualized_return = (
+            (values[-1] / result.initial_cash) ** (TRADING_DAYS_PER_YEAR / periods) - 1
+        )
 
     peak = values[0]
     max_drawdown = 0.0
     for value in values[1:]:
         peak = max(peak, value)
         if peak > 0:
+            # 回撤以负数表示相对历史峰值的跌幅，初始资金也参与峰值比较。
             max_drawdown = min(max_drawdown, value / peak - 1)
 
-    daily_returns = [current / previous - 1 for previous, current in zip(values, values[1:]) if previous > 0]
+    daily_returns = [
+        current / previous - 1
+        for previous, current in zip(values, values[1:])
+        if previous > 0
+    ]
     if len(daily_returns) < 2:
         sharpe = 0.0
     else:
+        # 使用样本标准差与年化日收益，风险免费率按 252 个交易日折算。
         daily_risk_free = (1 + annual_risk_free_rate) ** (1 / TRADING_DAYS_PER_YEAR) - 1
         excess_returns = [daily_return - daily_risk_free for daily_return in daily_returns]
         volatility = statistics.stdev(excess_returns)

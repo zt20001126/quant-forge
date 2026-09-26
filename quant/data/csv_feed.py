@@ -12,6 +12,8 @@ from quant.core.bar import Bar
 
 
 class CSVDataFeed:
+    """将 CSV 日线校验并转换为按时间排序的领域 Bar。"""
+
     REQUIRED_COLUMNS = ("date", "open", "high", "low", "close", "volume")
 
     def __init__(self, file_path: Union[str, Path], symbol: str) -> None:
@@ -19,6 +21,7 @@ class CSVDataFeed:
         self.symbol = symbol
 
     def __iter__(self) -> Iterator[Bar]:
+        """完整校验输入后再产出行情，避免部分坏数据进入回测。"""
         if not self.file_path.is_file():
             raise FileNotFoundError("未找到行情文件：{}".format(self.file_path))
 
@@ -48,6 +51,7 @@ class CSVDataFeed:
         return iter(bars)
 
     def _parse_row(self, row: dict[str, Optional[str]]) -> Bar:
+        """把一行原始字段转换为有 OHLCV 不变量的 Bar。"""
         raw_date = row.get("date")
         if raw_date is None or not raw_date.strip():
             raise ValueError("date 不能为空。")

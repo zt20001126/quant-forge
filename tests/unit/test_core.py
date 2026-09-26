@@ -1,13 +1,9 @@
 """Core Domain Model 的不变量测试。"""
 
-import sys
 import unittest
 from datetime import datetime, timedelta
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-
-from quant.core import Bar, Order, OrderStatus, OrderType, OrderIntent, Position, Side, Trade
+from quant.core import Bar, Order, OrderIntent, OrderStatus, OrderType, Position, Side, Trade
 
 
 class CoreDomainTest(unittest.TestCase):
@@ -27,8 +23,13 @@ class CoreDomainTest(unittest.TestCase):
             OrderIntent("AAA", -1, self.signal_time)
 
     def test_order_and_trade_preserve_signal_and_execution_times(self) -> None:
-        order = Order("o1", "AAA", Side.BUY, 2, OrderType.MARKET, self.signal_time, self.execution_time)
-        trade = Trade("t1", order.order_id, "AAA", Side.BUY, 10, 2, 0.01, order.signal_time, order.execution_time)
+        order = Order(
+            "o1", "AAA", Side.BUY, 2, OrderType.MARKET, self.signal_time, self.execution_time
+        )
+        trade = Trade(
+            "t1", order.order_id, "AAA", Side.BUY, 10, 2, 0.01,
+            order.signal_time, order.execution_time,
+        )
         self.assertGreater(trade.execution_time, trade.signal_time)
         self.assertEqual(OrderStatus.NEW.value, "NEW")
         with self.assertRaises(ValueError):

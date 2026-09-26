@@ -28,6 +28,8 @@ class OrderIntent:
 
 @dataclass(frozen=True)
 class Order:
+    """已确定数量和执行时间、等待 Broker 执行的订单。"""
+
     order_id: str
     symbol: str
     side: Side
@@ -55,6 +57,8 @@ class Order:
 
 @dataclass(frozen=True)
 class OrderResult:
+    """订单执行状态；只有 FILLED 结果应包含 Trade。"""
+
     order_id: str
     status: OrderStatus
     reason: str = ""

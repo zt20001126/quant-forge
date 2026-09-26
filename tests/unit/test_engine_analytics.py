@@ -1,20 +1,17 @@
 """回测生命周期与绩效公式测试。"""
 
-import sys
 import tempfile
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-
 from quant.analytics.metrics import calculate_performance
 from quant.broker.broker import SimulatedBroker
 from quant.broker.commission import PercentageCommission
 from quant.broker.slippage import NoSlippage
-from quant.core import Bar
 from quant.data.csv_feed import CSVDataFeed
 from quant.engine.backtest_engine import BacktestEngine
+from quant.engine.models import BacktestResult, EquitySnapshot
 from quant.portfolio.portfolio import Portfolio
 from quant.strategy.ma_cross import MACrossStrategy
 
@@ -54,18 +51,14 @@ class EngineAnalyticsTest(unittest.TestCase):
                 engine.run()
 
     def test_performance_uses_initial_cash_as_baseline(self) -> None:
-        bars = [
-            Bar("AAA", datetime(2024, 1, 1) + timedelta(days=i), 10, 10, 10, 10, 1)
-            for i in range(3)
-        ]
-        class FlatStrategy:
-            def on_bar(self, bar, history):
-                return []
-        from quant.engine.models import BacktestResult, EquitySnapshot
+        timestamps = [datetime(2024, 1, 1) + timedelta(days=index) for index in range(3)]
         result = BacktestResult(
             100,
             (),
-            tuple(EquitySnapshot(b.datetime, 100, "AAA", 0, 10, 0, 100) for b in bars),
+            tuple(
+                EquitySnapshot(timestamp, 100, "AAA", 0, 10, 0, 100)
+                for timestamp in timestamps
+            ),
             (),
             (),
         )
