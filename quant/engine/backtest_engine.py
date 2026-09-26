@@ -12,6 +12,7 @@ from quant.core.trade import Trade
 from quant.data.base import DataFeed
 from quant.engine.models import BacktestResult, EquitySnapshot, PendingOrder
 from quant.portfolio.portfolio import Portfolio
+from quant.portfolio.position_sizer import FixedFractionPositionSizer, PositionSizer
 from quant.strategy.base import Strategy
 
 
@@ -24,11 +25,13 @@ class BacktestEngine:
         strategy: Strategy,
         broker: SimulatedBroker,
         portfolio: Portfolio,
+        position_sizer: Optional[PositionSizer] = None,
     ) -> None:
         self.data_feed = data_feed
         self.strategy = strategy
         self.broker = broker
         self.portfolio = portfolio
+        self.position_sizer = (position_sizer if position_sizer is not None else FixedFractionPositionSizer())
         self._has_run = False
 
     def run(self) -> BacktestResult:
@@ -133,11 +136,16 @@ class BacktestEngine:
 
         execution_reference = bar.open
         quoted_price = self.broker.quote(side, execution_reference)
-        quantity = (
-            self.broker.max_affordable_quantity(self.portfolio.cash, quoted_price)
-            if side == Side.BUY
-            else current_quantity
-        )
+        if side == Side.BUY:
+            # 执行时按 Open 估值账户权益；佣金预算与比例预算取较小值，再由 Broker
+            # 按实际佣金模型求可支付数量，最后向下取整确保资金约束不会被浮点误差突破。
+            equity = self.portfolio.mark_to_market(execution_reference).portfolio_value
+            target_quantity = self.position_sizer.calculate_quantity(equity, quoted_price)
+            commission_budget = min(equity * self.position_sizer.position_ratio, self.portfolio.cash)
+            affordable = self.broker.max_affordable_quantity(commission_budget, quoted_price)
+            quantity = min(target_quantity, int(affordable))
+        else:
+            quantity = current_quantity
         if quantity <= 0:
             return None
         return Order(
