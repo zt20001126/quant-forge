@@ -1,0 +1,30 @@
+# Python bytecode and test/tool caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.hypothesis/
+.cache/
+.coverage
+htmlcov/
+
+# Build and editable-install metadata
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE and local workspace settings
+.idea/
+.vscode/
+
+# Platform metadata
+.DS_Store
+Thumbs.db
