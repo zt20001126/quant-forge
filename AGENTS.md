@@ -65,6 +65,16 @@
 - 架构变化同步更新 `docs/architecture.md`；用户使用方式变化同步更新 `README.md`。
 - 文档中的目录、接口、功能状态及阶段依赖必须与实际代码一致；不得把 Roadmap 描述为已实现能力。
 
+### 变更记录规范
+
+- 以下重要修改必须在 `docs/changes/` 新建一份 Change Record：新功能、Bug 修复、核心业务逻辑修改、架构调整、模块职责变化、公共接口或数据模型变化、Strategy/Broker/Portfolio/Engine 核心逻辑变化、回测时间语义变化、Commission/Slippage/Risk 规则变化、重要性能优化及重要工程化改造。
+- 拼写修复、单纯格式化、注释措辞调整、README 小型文字修正和无业务影响的简单清理通常不单独建记录，避免无价值的记录文件。
+- 文件名使用 `YYYY-MM-DD-序号-简短描述.md`；创建前检查当天已有记录，序号递增。记录应基于实际差异和验证结果，不猜测未完成工作。
+- 开发完成流程：代码修改完成 → 运行相关测试 → 检查 Git Diff → 判断是否属于重要变更 → 创建 Change Record → 必要时更新 CHANGELOG.md → 必要时更新 README / architecture → 输出自测报告。
+- `CHANGELOG.md` 记录版本级的重要用户可见或开发者重要变化；普通开发先记入 `[Unreleased]`，发布时整理到对应版本并保留空的 `[Unreleased]`。
+- `docs/changes/` 记录一次具体任务的背景、原因、实现、设计决策、涉及文件、测试、影响和后续事项。
+- Git Commit 保存代码历史。Commit、CHANGELOG 和 Change Record 各有用途，不能互相替代。
+
 ## 完成前复核
 
 检查依赖方向、是否跨层访问内部状态、是否引入循环依赖、是否改变核心接口、测试是否覆盖新行为，以及架构文档和 V0.1 TODO 是否需要同步更新。明确列出剩余风险。

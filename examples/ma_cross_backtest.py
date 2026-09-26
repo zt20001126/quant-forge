@@ -14,6 +14,7 @@ from quant.engine.backtest_engine import BacktestEngine
 from quant.engine.models import BacktestResult
 from quant.portfolio.portfolio import Portfolio
 from quant.strategy.ma_cross import MACrossStrategy
+from quant.visualization import plot_backtest
 
 
 def run_example(
@@ -29,10 +30,13 @@ def run_example(
 
 if __name__ == "__main__":
     root = Path(__file__).resolve().parents[1]
-    backtest_result, metrics = run_example(root / "data" / "stock_real.csv")
+    data_path = root / "data" / "stock_real.csv"
+    backtest_result, metrics = run_example(data_path)
     print("Trades: {}".format(len(backtest_result.trades)))
     print("Final equity: {:.2f}".format(backtest_result.equity_curve[-1].portfolio_value))
     print("Total return: {:.2%}".format(metrics.total_return))
     print("Annualized return: {:.2%}".format(metrics.annualized_return))
     print("Max drawdown: {:.2%}".format(metrics.max_drawdown))
     print("Sharpe: {:.3f}".format(metrics.sharpe_ratio))
+    # BacktestResult 不重复保存输入行情；绘图需要时再读取同一份 CSV。
+    plot_backtest(list(CSVDataFeed(data_path, "DEMO")), backtest_result)
