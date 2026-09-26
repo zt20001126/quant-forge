@@ -15,7 +15,7 @@ V0.1 支持单标的日线 CSV、MA Cross、目标仓位意图、市价执行、
 | `quant.indicators` | 简单移动平均计算 | 数据读取、交易决策 |
 | `quant.strategy` | 消费当前 Bar 与截至当前的历史 Bar，产生目标仓位 OrderIntent | 读取具体数据源、读取/修改账户、成交与费用 |
 | `quant.broker` | 订单执行、滑点应用、佣金计算、含费最大可买数量报价 | 策略决策及现金/持仓所有权 |
-| `quant.portfolio` | 现金、单标的持仓、Trade 入账、账户估值 | 生成信号、决定成交价 |
+| `quant.portfolio` | 现金、单标的持仓、Trade 入账、账户估值；按权益/比例/价格计算整股买入量 | 生成信号、决定成交价、选择动态风险策略 |
 | `quant.engine` | 推进生命周期、协作公开接口、汇总 Trade/订单结果/权益快照 | MA 计算、撮合公式、佣金公式、绩效算法 |
 | `quant.analytics` | 从 BacktestResult 计算收益、年化收益、最大回撤和 Sharpe | 交易循环或账户修改 |
 | `quant.visualization` | 读取 Bar 序列与 BacktestResult，展示收盘价方向、成交点和权益曲线 | 修改回测结果、生成信号或更改账户 |
@@ -28,7 +28,7 @@ V0.1 支持单标的日线 CSV、MA Cross、目标仓位意图、市价执行、
 ```text
 examples → engine + 具体实现
 examples → visualization
-engine → core + DataFeed/Strategy 协议 + Broker + Portfolio
+engine → core + DataFeed/Strategy/PositionSizer 协议 + Broker + Portfolio
 data / indicators / strategy / broker / portfolio → core
 analytics → engine 的只读结果模型 + 标准库
 visualization → core.Bar + engine.BacktestResult + Matplotlib
@@ -52,7 +52,7 @@ V0.1 只有一个 Broker 实现，Engine 对其具体类型 `SimulatedBroker` �
 
 ```text
 读取并校验所有 Bar
-  → 对当前 Bar 开盘时到期的上根信号按 Open 定价和定量
+  → 对当前 Bar 开盘时到期的上根信号按 Open 估值权益，并按比例及滑点报价定量
   → Broker 应用滑点并生成 Trade / 拒绝结果
   → Portfolio 对 Trade 入账
   → 按当前 Bar Close 记录 EquitySnapshot
@@ -61,9 +61,9 @@ V0.1 只有一个 Broker 实现，Engine 对其具体类型 `SimulatedBroker` �
   → BacktestResult → Analytics
 ```
 
-Signal Time 是策略观察到完整 Bar 的时点；Execution Time 必须晚于 Signal Time。T 日 Close 形成的信号最早在下一根可用 Bar 的 Open 执行。Engine 在执行 Bar 到达后才根据 Open、佣金/滑点报价和可用现金定量，不用未来价格；Broker 对真正成交生成的 Trade 只记录一次实际佣金。估值发生在当根交易处理后，因此当日快照含开盘成交后的收盘持仓市值。
+Signal Time 是策略观察到完整 Bar 的时点；Execution Time 必须晚于 Signal Time。T 日 Close 形成的信号最早在下一根可用 Bar 的 Open 执行。Engine 在执行 Bar 到达后才根据 Open 估值的账户权益、仓位比例和滑点报价计算整股买入数量，再以仓位额度和可用现金为上限调用 Broker 的含佣金可负担数量逻辑，不用未来价格。仓位公式为 `floor(Equity × PositionRatio / Price)`；手续费计入比例额度，任何浮点余量均向下取整。卖出意图按 Portfolio 当前全部持仓生成，不走买入仓位器。Broker 对成交 Trade 只记录一次实际佣金。估值发生在当根交易处理后，因此当日快照含开盘成交后的收盘持仓市值。
 
-末根 Bar 产生的信号因无下一根执行机会而过期，不得按末日 Close 回填成交。买入意图没有可确定数量，`PendingOrder.quantity` 为 `None`；卖出意图记录待卖出的当前持仓数量。
+末根 Bar 产生的信号因无下一根执行机会而过期，不得按末日 Close 回填成交。买入意图没有可确定数量，`PendingOrder.quantity` 为 `None`；卖出意图记录待卖出的当前持仓数量。默认 `FixedFractionPositionSizer` 比例为 1.0，以兼容原有 Engine 默认满仓行为；组装时可注入其他 `PositionSizer`，比例必须在 `(0, 1]`，权益或价格非正时买入量为零。
 
 ## 账户与绩效约束
 
@@ -86,4 +86,4 @@ Signal Time 是策略观察到完整 Bar 的时点；Execution Time 必须晚于
 
 ## 已知范围边界
 
-当前仅有单标的日线、CSV、MA Cross、市价单和多头账户；可视化仅支持回测结果的静态研究图，不包含交互式图表或实时行情。没有复权/公司行为处理、RiskManager、多资产、做空、杠杆、优化、Walk Forward、事件驱动、数据库或实盘能力。新增或变更上述架构边界时，先说明原因与迁移影响，再同步本文件、测试和 V0.1 TODO。
+当前仅有单标的日线、CSV、MA Cross、市价单、多头账户和固定比例整股仓位计算；可视化仅支持回测结果的静态研究图，不包含交互式图表或实时行情。没有复权/公司行为处理、RiskManager、多资产、做空、杠杆、优化、Walk Forward、事件驱动、数据库或实盘能力。新增或变更上述架构边界时，先说明原因与迁移影响，再同步本文件、测试和 V0.1 TODO。

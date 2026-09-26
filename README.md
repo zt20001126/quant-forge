@@ -9,7 +9,7 @@ QuantForge 是独立的个人量化研究与回测项目。当前版本为 **V0.
 - CSV 单标的日线 OHLCV 读取、校验与时间排序。
 - 简单移动平均和 MA Cross 空仓/满仓目标仓位策略。
 - 市价单模拟、比例/固定佣金、无/固定/比例滑点。
-- 单标的多头 Portfolio，支持小数股、成交入账及每日估值。
+- 单标的多头 Portfolio，支持整股仓位计算、成交入账及每日估值。
 - 回测交易记录、订单结果、未执行订单、Equity 曲线。
 - 总收益、年化收益、最大回撤和 Sharpe Ratio。
 - 示例运行后显示收盘价涨跌、买卖成交点和组合权益曲线。
@@ -32,6 +32,30 @@ CSVDataFeed → Bar → Strategy → OrderIntent → BacktestEngine
 
 `quant/core` 保存领域对象；`data` 负责行情读取和校验；`indicators` 计算指标；`strategy` 产生意图；`broker` 执行订单并计算交易成本；`portfolio` 独占账户状态；`engine` 编排生命周期；`analytics` 只消费结果。V0.1 不预建未使用的 `risk` 或 `config` 空模块。
 
+## 仓位管理 / Position Sizing
+
+仓位管理根据账户权益、配置比例和执行价格，把策略的买入意图换算成可提交的买入股数。Strategy 只表达 BUY/SELL（当前通过目标仓位 `1`/`0` 表达），不决定买入数量。当前支持 `FixedFractionPositionSizer`：每次买入最多分配账户权益的固定比例，股数按整股向下取整。
+
+```text
+Quantity = floor((Equity × PositionRatio) / Price)
+```
+
+例如权益为 `100000`、比例为 `0.2`、执行报价为 `50`，可投入金额为 `20000`，数量为 `400` 股。Engine 在下一根 Bar 的 Open 到达后，使用该 Open 对账户估值并结合 Broker 滑点报价计算数量；佣金预算、可用现金进一步限制买入数量。若权益或价格无效、资金不足以买入一股，数量为零且不会生成有效买单。卖出订单按当前持仓全部卖出，不通过买入仓位器重新计算。
+
+比例通过 Engine 组装时注入，不写入策略：
+
+```python
+from quant.engine.backtest_engine import BacktestEngine
+from quant.portfolio.position_sizer import FixedFractionPositionSizer
+
+engine = BacktestEngine(
+    data_feed, strategy, broker, portfolio,
+    position_sizer=FixedFractionPositionSizer(position_ratio=0.2),
+)
+```
+
+`position_ratio` 必须满足 `0 < position_ratio <= 1`。当前版本只支持单标的、多头、整股和固定比例；手续费包含在每次分配额度内。不支持小数股、分批加仓、Kelly、风险平价、波动率/ATR 定仓或多资产资金分配。
+
 ## 项目结构
 
 ```text
@@ -41,7 +65,7 @@ quant/                  可安装的 Python 包
   indicators/           简单移动平均
   strategy/             策略协议和 MA Cross
   broker/               市价执行、佣金和滑点
-  portfolio/            现金、持仓、成交入账和估值
+  portfolio/            现金、持仓、仓位计算、成交入账和估值
   engine/               回测编排、结果与权益快照
   analytics/            绩效指标
 tests/unit/             单元测试
@@ -94,7 +118,7 @@ mypy quant
 ## 回测假设
 
 - **Signal Time / Execution Time**：策略在 T 日完整 Bar 可见后产生信号；订单最早于下一根可用 Bar（通常 T+1）的 Open 执行。不会用 T 日 Close 产生信号后又假设按该 Close 成交。
-- **定量时点**：Engine 等执行 Bar 到达后，才按该 Bar 的 Open、滑点报价和账户现金计算买入数量。
+- **定量时点**：Engine 等执行 Bar 到达后，按该 Bar 的 Open 估值权益，并用滑点报价、固定比例仓位器、佣金和可用现金确定整股买入数量。
 - **成交成本**：Broker 按方向应用滑点，并在最终 Trade 上记录一次佣金。可买数量计算中的佣金调用用于报价，不会重复入账。
 - **账户与估值**：Portfolio 根据成交 Trade 更新现金与持仓；每根 Bar 的交易处理后按 Close 估值。权益等于现金加持仓市值。
 - **末根信号**：没有下一根 Bar 可执行的意图记为 `EXPIRED_NO_NEXT_BAR`；该未执行信号不改变账户。
@@ -102,7 +126,7 @@ mypy quant
 
 ## 当前限制
 
-仅支持单标的日线 CSV、MA Cross、市价单和多头单持仓；不支持做空、杠杆、多资产、复权/公司行为处理、风险管理器、参数优化、Walk Forward、事件驱动、数据库、Web UI 或实盘交易。真实研究结果受数据质量、费用假设和成交模型影响。
+仅支持单标的日线 CSV、MA Cross、市价单和多头单持仓；仓位管理只支持固定比例与整股，且不支持部分卖出、做空、杠杆、多资产、复权/公司行为处理、风险管理器、参数优化、Walk Forward、事件驱动、数据库、Web UI 或实盘交易。真实研究结果受数据质量、费用假设和成交模型影响。
 
 ## Roadmap
 
