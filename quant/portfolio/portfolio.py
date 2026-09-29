@@ -77,6 +77,8 @@ class Portfolio:
             )
             self._position.realized_pnl += realized
             self._cash += amount - trade.commission
+            if abs(self._cash) < 1e-8:
+                self._cash = 0.0
             self._position.quantity -= trade.quantity
             if self._position.quantity <= 1e-8:
                 self._position.quantity = 0.0

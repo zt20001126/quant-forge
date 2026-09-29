@@ -75,6 +75,30 @@ class FixedFractionPositionSizerTest(unittest.TestCase):
         self.assertEqual(result.trades[1].quantity, 400)
         self.assertEqual(portfolio.position_quantity, 0)
 
+    def test_engine_preserves_decimal_position_ratio_at_integer_boundary(self) -> None:
+        start = datetime(2024, 1, 1)
+        bars = [
+            Bar("AAA", start + timedelta(days=index), 1, 1, 1, 1, 100)
+            for index in range(2)
+        ]
+
+        class Feed:
+            def __iter__(self):
+                return iter(bars)
+
+        engine = BacktestEngine(
+            Feed(),
+            BuyThenSellStrategy(),
+            SimulatedBroker(PercentageCommission(0), NoSlippage()),
+            Portfolio(100, "AAA"),
+            FixedFractionPositionSizer(0.29),
+        )
+
+        result = engine.run()
+
+        self.assertEqual(len(result.trades), 1)
+        self.assertEqual(result.trades[0].quantity, 29)
+
     def test_buy_is_limited_by_available_cash_and_commission(self) -> None:
         sizer = FixedFractionPositionSizer(1.0)
         quantity = sizer.calculate_quantity(1_000, 10)
