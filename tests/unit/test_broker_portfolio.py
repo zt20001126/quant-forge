@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from quant.broker.broker import SimulatedBroker
 from quant.broker.commission import PercentageCommission
 from quant.broker.slippage import FixedSlippage
-from quant.core import Bar, Order, OrderStatus, OrderType, Side
+from quant.core import Bar, Order, OrderStatus, OrderType, Side, Trade
 from quant.portfolio.portfolio import Portfolio
 
 
@@ -48,6 +48,18 @@ class BrokerPortfolioTest(unittest.TestCase):
         quantity = broker.max_affordable_quantity(105, 10)
         self.assertAlmostEqual(quantity, 10)
 
+    def test_max_affordable_integer_quantity_keeps_exact_decimal_boundary(self) -> None:
+        broker = SimulatedBroker(PercentageCommission(0), FixedSlippage(0))
+
+        self.assertEqual(broker.max_affordable_integer_quantity(0.3, 0.1), 3)
+
+    def test_max_affordable_integer_quantity_includes_fixed_commission(self) -> None:
+        from quant.broker.commission import FixedCommission
+
+        broker = SimulatedBroker(FixedCommission(5), FixedSlippage(0))
+
+        self.assertEqual(broker.max_affordable_integer_quantity(105, 10), 10)
+
     def test_successful_sale_restores_cash_without_negative_position(self) -> None:
         start = datetime(2024, 1, 1)
         buy_time = start + timedelta(days=1)
@@ -68,6 +80,33 @@ class BrokerPortfolioTest(unittest.TestCase):
         portfolio.apply_trade(sell_trade)
         self.assertEqual(portfolio.cash, 1000)
         self.assertEqual(portfolio.position_quantity, 0)
+
+    def test_sale_normalizes_tiny_negative_cash_within_allowed_tolerance(self) -> None:
+        start = datetime(2024, 1, 1)
+        buy_time = start + timedelta(days=1)
+        sell_time = start + timedelta(days=2)
+        portfolio = Portfolio(1, "AAA")
+        portfolio.apply_trade(
+            Trade("buy", "buy-order", "AAA", Side.BUY, 1, 1, 0, start, buy_time)
+        )
+
+        portfolio.apply_trade(
+            Trade(
+                "sell",
+                "sell-order",
+                "AAA",
+                Side.SELL,
+                1,
+                1,
+                1.000000005,
+                buy_time,
+                sell_time,
+            )
+        )
+
+        self.assertEqual(portfolio.cash, 0)
+        self.assertEqual(portfolio.position_quantity, 0)
+        self.assertEqual(portfolio.mark_to_market(1).portfolio_value, 0)
 
 if __name__ == "__main__":
     unittest.main()

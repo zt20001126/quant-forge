@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Optional, Sequence
 
 from quant.broker.broker import SimulatedBroker
@@ -136,14 +137,17 @@ class BacktestEngine:
 
         execution_reference = bar.open
         quoted_price = self.broker.quote(side, execution_reference)
+        quantity: float
         if side == Side.BUY:
-            # 执行时按 Open 估值账户权益；佣金预算与比例预算取较小值，再由 Broker
-            # 按实际佣金模型求可支付数量，最后向下取整确保资金约束不会被浮点误差突破。
+            # 保持比例预算的十进制口径，再由 Broker 按佣金模型检查整股可负担数量。
             equity = self.portfolio.mark_to_market(execution_reference).portfolio_value
             target_quantity = self.position_sizer.calculate_quantity(equity, quoted_price)
-            commission_budget = min(equity * self.position_sizer.position_ratio, self.portfolio.cash)
-            affordable = self.broker.max_affordable_quantity(commission_budget, quoted_price)
-            quantity = min(target_quantity, int(affordable))
+            equity_budget = Decimal(str(equity)) * Decimal(str(self.position_sizer.position_ratio))
+            cash_budget = min(equity_budget, Decimal(str(self.portfolio.cash)))
+            affordable_quantity = self.broker.max_affordable_integer_quantity(
+                float(cash_budget), quoted_price
+            )
+            quantity = min(target_quantity, affordable_quantity)
         else:
             quantity = current_quantity
         if quantity <= 0:

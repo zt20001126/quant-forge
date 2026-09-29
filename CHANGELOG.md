@@ -12,6 +12,7 @@ All notable changes to QuantForge will be documented in this file.
 ### Changed
 
 ### Fixed
+- 修复固定比例仓位在浮点边界下少买整股，以及卖出后容差内负现金导致绩效拒绝的问题。
 
 ### Removed
 
