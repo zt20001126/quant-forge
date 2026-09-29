@@ -13,7 +13,7 @@ from quant.core import Bar, Side
 from quant.core.order import OrderIntent
 from quant.engine.backtest_engine import BacktestEngine
 from quant.portfolio.portfolio import Portfolio
-from quant.portfolio.position_sizer import FixedFractionPositionSizer
+from quant.portfolio.position_sizer import FixedFractionPositionSizer, RiskBasedPositionSizer
 
 
 class BuyThenSellStrategy:
@@ -98,6 +98,24 @@ class FixedFractionPositionSizerTest(unittest.TestCase):
 
         self.assertEqual(len(result.trades), 1)
         self.assertEqual(result.trades[0].quantity, 29)
+
+    def test_risk_based_sizer_uses_loss_budget_divided_by_stop_distance(self) -> None:
+        sizer = RiskBasedPositionSizer(risk_fraction=0.01)
+
+        self.assertEqual(sizer.calculate_quantity(10_000, 100, stop_distance=4), 25)
+        self.assertEqual(sizer.allocation_budget(10_000), 10_000)
+
+    def test_risk_based_sizer_rejects_missing_or_invalid_stop_distance(self) -> None:
+        sizer = RiskBasedPositionSizer(risk_fraction=0.01)
+
+        for stop_distance in (None, 0, -1, float("inf"), float("nan")):
+            with self.subTest(stop_distance=stop_distance), self.assertRaises(ValueError):
+                sizer.calculate_quantity(10_000, 100, stop_distance)
+
+    def test_risk_fraction_must_be_in_open_closed_unit_interval(self) -> None:
+        for risk_fraction in (0, -0.1, 1.01, float("inf"), float("nan"), True):
+            with self.subTest(risk_fraction=risk_fraction), self.assertRaises(ValueError):
+                RiskBasedPositionSizer(risk_fraction)
 
     def test_buy_is_limited_by_available_cash_and_commission(self) -> None:
         sizer = FixedFractionPositionSizer(1.0)

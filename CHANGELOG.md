@@ -5,6 +5,7 @@ All notable changes to QuantForge will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- 可选 ATR 固定保护止损与基于止损距离的风险比例整股定仓，止损触发经 Broker 成本模型及 Portfolio 入账。
 - 独立 True Range 与 Wilder ATR 指标计算，支持周期配置和明确的暖机期结果。
 - MA Cross 示例的静态回测图：收盘价涨跌、实际买卖成交点与组合权益曲线。
 - `docs/changes/` 变更记录机制及任务记录模板。

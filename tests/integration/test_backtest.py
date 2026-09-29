@@ -2,15 +2,21 @@
 
 import tempfile
 import unittest
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Sequence
 
 from quant.analytics.metrics import calculate_performance
 from quant.broker.broker import SimulatedBroker
 from quant.broker.commission import PercentageCommission
 from quant.broker.slippage import FixedSlippage
+from quant.core import Bar
+from quant.core.enums import Side
+from quant.core.order import OrderIntent
 from quant.data.csv_feed import CSVDataFeed
 from quant.engine.backtest_engine import BacktestEngine
 from quant.portfolio.portfolio import Portfolio
+from quant.portfolio.position_sizer import RiskBasedPositionSizer
 from quant.strategy.ma_cross import MACrossStrategy
 
 
@@ -45,6 +51,44 @@ class EndToEndBacktestTest(unittest.TestCase):
                 result.equity_curve[-1].portfolio_value,
                 result.equity_curve[-1].cash + result.equity_curve[-1].market_value,
             )
+
+    def test_risk_sized_atr_stop_closes_through_broker_and_portfolio(self) -> None:
+        start = datetime(2024, 1, 1)
+        bars = [
+            Bar("AAA", start, 100, 101, 99, 100, 100),
+            Bar("AAA", start + timedelta(days=1), 100, 102, 97, 101, 100),
+            Bar("AAA", start + timedelta(days=2), 100, 101, 95, 98, 100),
+        ]
+
+        class Feed:
+            def __iter__(self):
+                return iter(bars)
+
+        class ProtectedEntryStrategy:
+            def on_bar(self, bar: Bar, history: Sequence[Bar]) -> list[OrderIntent]:
+                if not history:
+                    return [OrderIntent(bar.symbol, 1, bar.datetime, protective_stop_distance=4)]
+                return []
+
+        portfolio = Portfolio(10_000, "AAA")
+        engine = BacktestEngine(
+            Feed(),
+            ProtectedEntryStrategy(),
+            SimulatedBroker(PercentageCommission(0.001), FixedSlippage(0)),
+            portfolio,
+            RiskBasedPositionSizer(risk_fraction=0.01),
+        )
+
+        result = engine.run()
+
+        self.assertEqual([trade.side for trade in result.trades], [Side.BUY, Side.SELL])
+        self.assertEqual([trade.quantity for trade in result.trades], [25, 25])
+        self.assertEqual([trade.price for trade in result.trades], [100, 96])
+        self.assertAlmostEqual(result.trades[0].commission, 2.5)
+        self.assertAlmostEqual(result.trades[1].commission, 2.4)
+        self.assertEqual(portfolio.position_quantity, 0)
+        self.assertAlmostEqual(portfolio.cash, 9_895.1)
+        self.assertAlmostEqual(result.equity_curve[-1].portfolio_value, 9_895.1)
 
 
 if __name__ == "__main__":

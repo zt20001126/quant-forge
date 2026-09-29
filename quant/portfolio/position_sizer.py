@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation, ROUND_FLOOR
-from typing import Protocol
+from decimal import ROUND_FLOOR, Decimal, InvalidOperation
+from typing import Optional, Protocol
 
 
 class PositionSizer(Protocol):
     """根据账户权益与执行价格计算整数买入数量。"""
 
-    position_ratio: float
+    def allocation_budget(self, equity: float) -> Decimal: ...
 
-    def calculate_quantity(self, equity: float, price: float) -> int:
+    def calculate_quantity(
+        self, equity: float, price: float, stop_distance: Optional[float] = None
+    ) -> int:
         """返回买入数量；无有效资金或价格时返回零。"""
         ...
 
@@ -36,7 +38,18 @@ class FixedFractionPositionSizer:
         self.position_ratio = float(position_ratio)
         self._ratio = ratio
 
-    def calculate_quantity(self, equity: float, price: float) -> int:
+    def allocation_budget(self, equity: float) -> Decimal:
+        try:
+            equity_value = Decimal(str(equity))
+        except (InvalidOperation, ValueError):
+            return Decimal(0)
+        if not equity_value.is_finite() or equity_value <= 0:
+            return Decimal(0)
+        return equity_value * self._ratio
+
+    def calculate_quantity(
+        self, equity: float, price: float, stop_distance: Optional[float] = None
+    ) -> int:
         """按 floor(权益 × 比例 ÷ 价格) 计算整股数量。
 
         参数：
@@ -62,3 +75,51 @@ class FixedFractionPositionSizer:
             return 0
         allocated = equity_value * self._ratio
         return int((allocated / price_value).to_integral_value(rounding=ROUND_FLOOR))
+
+
+class RiskBasedPositionSizer:
+    """按权益风险预算与止损距离计算整股数量。"""
+
+    def __init__(self, risk_fraction: float = 0.01) -> None:
+        if isinstance(risk_fraction, bool) or not isinstance(risk_fraction, (int, float)):
+            raise ValueError("risk_fraction 必须是 (0, 1] 内的有限数值。")
+        try:
+            risk = Decimal(str(risk_fraction))
+        except InvalidOperation as exc:
+            raise ValueError("risk_fraction 必须是有限数值。") from exc
+        if not risk.is_finite() or not 0 < risk <= 1:
+            raise ValueError("risk_fraction 必须是 (0, 1] 内的有限数值。")
+        self.risk_fraction = float(risk)
+        self._risk = risk
+
+    def allocation_budget(self, equity: float) -> Decimal:
+        """风险仓位仍可使用全部可用权益，实际数量另受风险预算限制。"""
+        try:
+            equity_value = Decimal(str(equity))
+        except (InvalidOperation, ValueError):
+            return Decimal(0)
+        return max(Decimal(0), equity_value) if equity_value.is_finite() else Decimal(0)
+
+    def calculate_quantity(
+        self, equity: float, price: float, stop_distance: Optional[float] = None
+    ) -> int:
+        """以 floor(Equity × RiskFraction / StopDistance) 计算数量。"""
+        if stop_distance is None:
+            raise ValueError("风险定仓必须提供有效的 stop_distance。")
+        try:
+            equity_value = Decimal(str(equity))
+            price_value = Decimal(str(price))
+            distance_value = Decimal(str(stop_distance))
+        except (InvalidOperation, ValueError) as exc:
+            raise ValueError("权益、价格和止损距离必须是有限数值。") from exc
+        if not distance_value.is_finite() or distance_value <= 0:
+            raise ValueError("stop_distance 必须是正的有限数值。")
+        if (
+            not equity_value.is_finite()
+            or not price_value.is_finite()
+            or equity_value <= 0
+            or price_value <= 0
+        ):
+            return 0
+        budget = equity_value * self._risk
+        return int((budget / distance_value).to_integral_value(rounding=ROUND_FLOOR))

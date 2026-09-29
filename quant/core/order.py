@@ -18,12 +18,17 @@ class OrderIntent:
     symbol: str
     target_fraction: float
     signal_time: datetime
+    protective_stop_distance: Optional[float] = None
 
     def __post_init__(self) -> None:
         validate_symbol(self.symbol)
         validate_datetime(self.signal_time, "signal_time")
         if isinstance(self.target_fraction, bool) or self.target_fraction not in (0, 1):
             raise ValueError("V0.1 目标仓位只能是 0 或 1。")
+        if self.protective_stop_distance is not None:
+            validate_positive_finite(self.protective_stop_distance, "protective_stop_distance")
+            if self.target_fraction != 1:
+                raise ValueError("保护止损距离只允许附加到买入意图。")
 
 
 @dataclass(frozen=True)
@@ -37,6 +42,7 @@ class Order:
     order_type: OrderType
     signal_time: datetime
     execution_time: datetime
+    stop_price: Optional[float] = None
 
     def __post_init__(self) -> None:
         if not self.order_id:
@@ -51,8 +57,14 @@ class Order:
         validate_datetime(self.execution_time, "execution_time")
         if self.execution_time <= self.signal_time:
             raise ValueError("订单执行时间必须晚于信号时间。")
-        if self.order_type != OrderType.MARKET:
-            raise ValueError("V0.1 仅支持市价单。")
+        if self.order_type == OrderType.MARKET and self.stop_price is not None:
+            raise ValueError("市价单不能携带 stop_price。")
+        if self.order_type == OrderType.STOP_MARKET:
+            if self.side != Side.SELL:
+                raise ValueError("V0.1 止损市价单仅支持卖出。")
+            if self.stop_price is None:
+                raise ValueError("止损市价单必须提供 stop_price。")
+            validate_positive_finite(self.stop_price, "stop_price")
 
 
 @dataclass(frozen=True)

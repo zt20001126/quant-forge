@@ -60,6 +60,51 @@ class BrokerPortfolioTest(unittest.TestCase):
 
         self.assertEqual(broker.max_affordable_integer_quantity(105, 10), 10)
 
+    def test_stop_market_fills_at_stop_price_when_low_touches_it(self) -> None:
+        start = datetime(2024, 1, 1)
+        execution = start + timedelta(days=1)
+        broker = SimulatedBroker(PercentageCommission(0.01), FixedSlippage(0))
+        order = Order(
+            "stop",
+            "AAA",
+            Side.SELL,
+            10,
+            OrderType.STOP_MARKET,
+            start,
+            execution,
+            stop_price=96,
+        )
+
+        result = broker.execute(order, Bar("AAA", execution, 100, 101, 95, 98, 100))
+
+        self.assertEqual(result.status, OrderStatus.FILLED)
+        assert result.trade is not None
+        self.assertEqual(result.trade.price, 96)
+        self.assertAlmostEqual(result.trade.commission, 9.6)
+
+    def test_stop_market_gap_fills_at_open_and_rejects_untriggered_order(self) -> None:
+        start = datetime(2024, 1, 1)
+        execution = start + timedelta(days=1)
+        broker = SimulatedBroker(PercentageCommission(0), FixedSlippage(0))
+        order = Order(
+            "stop",
+            "AAA",
+            Side.SELL,
+            10,
+            OrderType.STOP_MARKET,
+            start,
+            execution,
+            stop_price=96,
+        )
+
+        gap_result = broker.execute(order, Bar("AAA", execution, 94, 95, 90, 92, 100))
+        untouched_result = broker.execute(order, Bar("AAA", execution, 100, 101, 97, 98, 100))
+
+        self.assertEqual(gap_result.status, OrderStatus.FILLED)
+        assert gap_result.trade is not None
+        self.assertEqual(gap_result.trade.price, 94)
+        self.assertEqual(untouched_result.status, OrderStatus.REJECTED)
+
     def test_successful_sale_restores_cash_without_negative_position(self) -> None:
         start = datetime(2024, 1, 1)
         buy_time = start + timedelta(days=1)

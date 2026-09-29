@@ -8,7 +8,7 @@ from typing import Optional
 from quant.broker.commission import CommissionModel, PercentageCommission
 from quant.broker.slippage import NoSlippage, SlippageModel
 from quant.core.bar import Bar
-from quant.core.enums import OrderStatus, Side
+from quant.core.enums import OrderStatus, OrderType, Side
 from quant.core.order import Order, OrderResult
 from quant.core.trade import Trade
 
@@ -98,6 +98,18 @@ class SimulatedBroker:
             return OrderResult(order.order_id, OrderStatus.REJECTED, "订单标的与行情标的不一致。")
 
         reference_price = bar.open
+        if order.order_type == OrderType.STOP_MARKET:
+            assert order.stop_price is not None
+            if bar.open <= order.stop_price:
+                reference_price = bar.open
+            elif bar.low <= order.stop_price:
+                reference_price = order.stop_price
+            else:
+                return OrderResult(
+                    order.order_id,
+                    OrderStatus.REJECTED,
+                    "止损价未被当前 Bar 触发。",
+                )
         execution_price = self.slippage_model.apply(reference_price, order.side)
         if execution_price <= 0:
             return OrderResult(order.order_id, OrderStatus.REJECTED, "滑点导致成交价无效。")
