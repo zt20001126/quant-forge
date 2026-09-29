@@ -4,7 +4,7 @@
 
 ## 当前实现范围
 
-V0.1 支持单标的日线 CSV、MA Cross、目标仓位意图、市价执行、佣金/滑点、单一多头 Portfolio、回测结果和基础绩效。Python 包实际位于仓库根目录 `quant/`，不是 `src/quant/`。项目没有单独的 `risk/` 或 `config/` 包，也不包含 RiskManager；资金不足、无效订单和禁止负持仓通过 Engine 的执行定量、Broker 及 Portfolio 的边界校验处理。
+当前实现支持单标的日线 CSV、MA Cross、SMA 与 True Range/Wilder ATR 指标计算、目标仓位意图、市价执行、佣金/滑点、单一多头 Portfolio、回测结果和基础绩效。ATR 是独立指标函数，尚未接入策略、风险定仓或止损。Python 包实际位于仓库根目录 `quant/`，不是 `src/quant/`。项目没有单独的 `risk/` 或 `config/` 包，也不包含 RiskManager；资金不足、无效订单和禁止负持仓通过 Engine 的执行定量、Broker 及 Portfolio 的边界校验处理。
 
 ## 模块职责
 
@@ -12,7 +12,7 @@ V0.1 支持单标的日线 CSV、MA Cross、目标仓位意图、市价执行、
 |---|---|---|
 | `quant.core` | Bar、OrderIntent、Order、OrderResult、Trade、Position、枚举及通用领域校验 | 文件读取、策略、成交、账户生命周期 |
 | `quant.data` | DataFeed 协议；读取 CSV、校验 OHLCV、排序并产出 Bar | 指标、信号或账户状态 |
-| `quant.indicators` | 简单移动平均计算 | 数据读取、交易决策 |
+| `quant.indicators` | 简单移动平均、True Range 与 Wilder ATR 纯计算 | 数据读取、交易决策、账户状态；ATR 尚未连接到风险/止损流程 |
 | `quant.strategy` | 消费当前 Bar 与截至当前的历史 Bar，产生目标仓位 OrderIntent | 读取具体数据源、读取/修改账户、成交与费用 |
 | `quant.broker` | 订单执行、滑点应用、佣金计算、含费最大可买数量报价 | 策略决策及现金/持仓所有权 |
 | `quant.portfolio` | 现金、单标的持仓、Trade 入账、账户估值；按权益/比例/价格计算整股买入量 | 生成信号、决定成交价、选择动态风险策略 |
@@ -47,6 +47,10 @@ V0.1 只有一个 Broker 实现，Engine 对其具体类型 `SimulatedBroker` �
 - `Trade`：Broker 生成的不可变成交记录，包含订单关联、成交价/量、佣金及信号/执行时间。
 - `Position`：Portfolio 持有的可变多头持仓状态；市值在估值时按价格计算。
 - `EquitySnapshot` / `BacktestResult`：只读回测输出，供展示与 Analytics 使用。
+
+## 指标计算
+
+`quant.indicators.true_range(bars)` 接受同一标的、按时间严格递增的 Bar 序列。首根 Bar 没有前收盘价，TR 定义为 `High - Low`；之后取 `max(High - Low, abs(High - PreviousClose), abs(Low - PreviousClose))`。`average_true_range(bars, period)` 使用 Wilder 算法：首个 ATR 为前 `period` 个 TR 的简单平均，随后 `ATR_t = ((period - 1) × ATR_(t-1) + TR_t) / period`。暖机期返回 `None`。两个函数只计算传入历史，不访问数据源或账户；当前策略/止损尚未调用 ATR。
 
 ## 生命周期和时间语义
 

@@ -7,7 +7,7 @@ QuantForge 是独立的个人量化研究与回测项目。当前版本为 **V0.
 ## V0.1 当前能力
 
 - CSV 单标的日线 OHLCV 读取、校验与时间排序。
-- 简单移动平均和 MA Cross 空仓/满仓目标仓位策略。
+- 简单移动平均、True Range、Wilder ATR 指标计算和 MA Cross 空仓/满仓目标仓位策略。
 - 市价单模拟、比例/固定佣金、无/固定/比例滑点。
 - 单标的多头 Portfolio，支持整股仓位计算、成交入账及每日估值。
 - 回测交易记录、订单结果、未执行订单、Equity 曲线。
@@ -31,6 +31,8 @@ CSVDataFeed → Bar → Strategy → OrderIntent → BacktestEngine
 ```
 
 `quant/core` 保存领域对象；`data` 负责行情读取和校验；`indicators` 计算指标；`strategy` 产生意图；`broker` 执行订单并计算交易成本；`portfolio` 独占账户状态；`engine` 编排生命周期；`analytics` 只消费结果。V0.1 不预建未使用的 `risk` 或 `config` 空模块。
+
+`true_range(bars)` 与 `average_true_range(bars, period)` 是独立指标函数。ATR 使用 Wilder 平滑，首根 TR 取 High − Low，首个 ATR 取周期内 TR 的简单平均，未达到周期时返回 `None`。目前指标可单独调用，尚未接入策略或止损。
 
 ## 仓位管理 / Position Sizing
 
@@ -62,7 +64,7 @@ engine = BacktestEngine(
 quant/                  可安装的 Python 包
   core/                 Bar、Order、Trade、Position 和校验
   data/                 DataFeed 协议和 CSV 适配
-  indicators/           简单移动平均
+  indicators/           SMA、True Range、Wilder ATR
   strategy/             策略协议和 MA Cross
   broker/               市价执行、佣金和滑点
   portfolio/            现金、持仓、仓位计算、成交入账和估值
