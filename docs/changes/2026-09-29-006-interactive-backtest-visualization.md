@@ -11,6 +11,7 @@
 - 悬停显示 Bar OHLCV；实际 Trade 显示方向、成交价、数量、佣金和信号日。
 - 指标线与止损线通过可选序列传入，且验证长度与 Bars 一致。
 - 增加 Plotly 运行依赖，更新 README、架构说明和可视化测试。
+- MA Cross 示例默认打开 Plotly 交互图，静态绘图 API 保持不变。
 
 ## 数据与边界
 
@@ -28,6 +29,7 @@
 - `quant/visualization/backtest_plot.py`
 - `quant/visualization/interactive_backtest_plot.py`
 - `quant/visualization/__init__.py`
+- `examples/ma_cross_backtest.py`
 - `tests/unit/test_visualization.py`
 - `pyproject.toml`
 - `README.md`

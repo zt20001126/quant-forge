@@ -16,7 +16,7 @@ from quant.engine.models import BacktestResult
 from quant.portfolio.portfolio import Portfolio
 from quant.portfolio.position_sizer import FixedFractionPositionSizer
 from quant.strategy.ma_cross import MACrossStrategy
-from quant.visualization import plot_backtest
+from quant.visualization import plot_interactive_backtest
 
 
 @dataclass(frozen=True)
@@ -59,4 +59,6 @@ if __name__ == "__main__":
     print("Max drawdown: {:.2%}".format(metrics.max_drawdown))
     print("Sharpe: {:.3f}".format(metrics.sharpe_ratio))
     # BacktestResult 不重复保存输入行情；绘图需要时再读取同一份 CSV。
-    plot_backtest(list(CSVDataFeed(data_path, "DEMO")), backtest_result)
+    # Plotly 默认在浏览器中打开交互图；静态绘图接口仍保留给其他调用者。
+    figure = plot_interactive_backtest(list(CSVDataFeed(data_path, "DEMO")), backtest_result)
+    figure.show()
