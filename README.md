@@ -83,7 +83,7 @@ docs/                   架构基线、长期指南和 V0.1 TODO
 
 ## 环境与安装
 
-- Python 3.8 或更高版本
+- Python 3.10.x
 - 开发依赖：pytest、ruff、mypy
 
 在仓库根目录安装：
@@ -150,7 +150,7 @@ python -m ruff check .
 python -m mypy
 ```
 
-mypy 检查 `quant/`、`examples/` 和 `tests/`，要求函数有完整类型注解；不解析当前环境中 pytest 的内部源码。GitHub Actions 使用 Python 3.8、3.10、3.12 执行相同检查。Python 3.8 是否通过，以对应 CI 的实际执行结果为准。
+mypy 检查 `quant/`、`examples/` 和 `tests/`，要求函数有完整类型注解；不解析当前环境中 pytest 的内部源码。项目仅支持 Python 3.10.x，GitHub Actions 使用 Python 3.10 执行相同检查。
 
 使用本地 Conda `agent` 环境时，可在仓库根目录运行：
 

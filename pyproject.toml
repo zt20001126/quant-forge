@@ -7,7 +7,7 @@ name = "quant-forge"
 version = "0.1.0"
 description = "A personal quantitative trading research and backtesting framework"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10,<3.11"
 dependencies = ["matplotlib>=3.7", "plotly>=5.18"]
 
 [project.optional-dependencies]
@@ -23,7 +23,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.ruff]
-target-version = "py38"
+target-version = "py310"
 line-length = 100
 src = ["quant"]
 
@@ -31,7 +31,7 @@ src = ["quant"]
 select = ["E", "F", "I"]
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.10"
 files = ["quant", "examples", "tests"]
 check_untyped_defs = true
 disallow_untyped_defs = true
@@ -45,5 +45,5 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["pytest", "_pytest.*"]
-# 目标 Python 3.8 的项目检查不解析当前环境较新 pytest 的内部运行库。
+# 不解析当前环境较新 pytest 的内部运行库。
 follow_imports = "skip"

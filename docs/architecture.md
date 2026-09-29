@@ -95,7 +95,7 @@ Engine 立即校验策略意图的标的与当前 Bar 时间，末根意图也�
 
 ## 测试与工具
 
-测试放在 `tests/unit/` 和 `tests/integration/`，通过 pytest 发现；行为基准包含非法数据、指标暖机、策略信号、成交成本、账户不变量、下一根 Open 执行、末根信号过期和 CSV 到绩效结果的集成流程。新增边界回归覆盖零 ATR、新仓止损、超卖、残余持仓、非法模型输出、订单结果一致性与绩效溢出。mypy 覆盖 quant/examples/tests 并要求函数注解；GitHub Actions 配置 Python 3.8/3.10/3.12 检查。开发工具由 `pyproject.toml` 的 `dev` 依赖提供：pytest、ruff、mypy。标准命令见 README；CI 的实际通过状态以执行记录为准。
+测试放在 `tests/unit/` 和 `tests/integration/`，通过 pytest 发现；行为基准包含非法数据、指标暖机、策略信号、成交成本、账户不变量、下一根 Open 执行、末根信号过期和 CSV 到绩效结果的集成流程。新增边界回归覆盖零 ATR、新仓止损、超卖、残余持仓、非法模型输出、订单结果一致性与绩效溢出。mypy 覆盖 quant/examples/tests 并要求函数注解；GitHub Actions 使用 Python 3.10 检查。开发工具由 `pyproject.toml` 的 `dev` 依赖提供：pytest、ruff、mypy。标准命令见 README；CI 的实际通过状态以执行记录为准。
 
 ## 已知范围边界
 
