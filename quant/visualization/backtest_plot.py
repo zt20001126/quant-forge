@@ -35,14 +35,12 @@ def plot_backtest(
     )
     font_properties = FontProperties(family=cjk_font or "DejaVu Sans")
     labels = (
-        ("收盘价", "上涨日", "下跌日", "买入成交", "卖出成交", "组合权益", "价格", "日期")
+        ("收盘价", "买入成交", "卖出成交", "组合权益", "价格", "日期")
         if cjk_font
-        else ("Close", "Up day", "Down day", "Buy", "Sell", "Portfolio value", "Price", "Date")
+        else ("Close", "Buy", "Sell", "Portfolio value", "Price", "Date")
     )
     (
         close_label,
-        up_label,
-        down_label,
         buy_label,
         sell_label,
         equity_label,
@@ -60,19 +58,6 @@ def plot_backtest(
     )
 
     price_axis.plot(dates, close_prices, color="#34495e", linewidth=1.4, label=close_label)
-    rising_indices = [
-        index for index in range(1, len(bars)) if bars[index].close >= bars[index - 1].close
-    ]
-    falling_indices = [
-        index for index in range(1, len(bars)) if bars[index].close < bars[index - 1].close
-    ]
-    rising_dates = [dates[index] for index in rising_indices]
-    rising_prices = [close_prices[index] for index in rising_indices]
-    falling_dates = [dates[index] for index in falling_indices]
-    falling_prices = [close_prices[index] for index in falling_indices]
-    price_axis.scatter(rising_dates, rising_prices, color="#2e8b57", s=14, label=up_label)
-    price_axis.scatter(falling_dates, falling_prices, color="#d9534f", s=14, label=down_label)
-
     for side, marker, color, label in (
         (Side.BUY, "^", "#00a65a", buy_label),
         (Side.SELL, "v", "#c0392b", sell_label),

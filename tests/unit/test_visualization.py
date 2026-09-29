@@ -8,7 +8,7 @@ from quant.core.bar import Bar
 from quant.core.enums import Side
 from quant.core.trade import Trade
 from quant.engine.models import BacktestResult, EquitySnapshot
-from quant.visualization import plot_backtest
+from quant.visualization import plot_backtest, plot_interactive_backtest
 
 
 class VisualizationTest(unittest.TestCase):
@@ -17,7 +17,7 @@ class VisualizationTest(unittest.TestCase):
         # 测试使用无窗口后端，避免绘图测试弹出桌面窗口。
         matplotlib.use("Agg")
 
-    def test_plot_shows_daily_direction_trades_and_equity(self) -> None:
+    def test_plot_shows_close_trades_and_equity_without_daily_direction_dots(self) -> None:
         start = datetime(2024, 1, 1)
         bars = [
             Bar("AAA", start, 10, 10, 10, 10, 100),
@@ -46,13 +46,8 @@ class VisualizationTest(unittest.TestCase):
                 price_axis.get_title(),
                 ("回测：价格与成交信号", "Backtest: Price and Trades"),
             )
-            self.assertIn(
-                {collection.get_label() for collection in price_axis.collections},
-                (
-                    {"上涨日", "下跌日", "买入成交", "卖出成交"},
-                    {"Up day", "Down day", "Buy", "Sell"},
-                ),
-            )
+            self.assertEqual(len(price_axis.collections), 2)
+            self.assertEqual(len(price_axis.lines), 1)
             self.assertIn(equity_axis.lines[0].get_label(), ("组合权益", "Portfolio value"))
             self.assertEqual(list(equity_axis.lines[0].get_ydata()), [100, 110, 105])
         finally:
@@ -77,6 +72,47 @@ class VisualizationTest(unittest.TestCase):
     def test_plot_rejects_missing_bars_or_equity(self) -> None:
         with self.assertRaises(ValueError):
             plot_backtest([], BacktestResult(100, (), (), (), ()), show=False)
+
+    def test_interactive_plot_has_three_linked_panels_daily_hover_and_optional_series(self) -> None:
+        start = datetime(2024, 1, 1)
+        bars = [
+            Bar("AAA", start + timedelta(days=index), 10 + index, 12 + index,
+                9 + index, 11 + index, 100 + index)
+            for index in range(3)
+        ]
+        trade = Trade("t1", "o1", "AAA", Side.BUY, 12, 5, 0.5,
+                      start, bars[1].datetime)
+        result = BacktestResult(
+            100, (trade,),
+            tuple(EquitySnapshot(bar.datetime, 40, "AAA", 5, bar.close, 5 * bar.close, value)
+                  for bar, value in zip(bars, (100, 95, 110))),
+            (), (),
+        )
+        figure = plot_interactive_backtest(
+            bars, result, indicators={"MA5": (None, 10.5, 11.5)},
+            stop_prices=(None, 8, 9),
+        )
+        names = {trace.name for trace in figure.data}
+        self.assertTrue({"Close", "MA5", "Stop loss", "BUY", "Portfolio Equity", "Drawdown"}
+                        <= names)
+        close = next(trace for trace in figure.data if trace.name == "Close")
+        self.assertEqual(list(close.customdata[0]), [10, 12, 9, 11, 100])
+        trade_trace = next(trace for trace in figure.data if trace.name == "BUY")
+        self.assertIn("Commission", trade_trace.hovertemplate)
+        self.assertIn("Slippage", trade_trace.hovertemplate)
+        self.assertEqual(figure.layout.xaxis.matches, "x")
+        self.assertTrue(figure.layout.xaxis3.rangeslider.visible)
+        drawdowns = list(next(trace for trace in figure.data if trace.name == "Drawdown").y)
+        self.assertAlmostEqual(drawdowns[0], 0)
+        self.assertAlmostEqual(drawdowns[1], -0.05)
+        self.assertAlmostEqual(drawdowns[2], 0)
+
+    def test_interactive_plot_rejects_mismatched_optional_data(self) -> None:
+        bar = Bar("AAA", datetime(2024, 1, 1), 10, 11, 9, 10, 100)
+        result = BacktestResult(100, (),
+            (EquitySnapshot(bar.datetime, 100, "AAA", 0, 10, 0, 100),), (), ())
+        with self.assertRaises(ValueError):
+            plot_interactive_backtest([bar], result, indicators={"MA5": []})
 
 
 if __name__ == "__main__":
