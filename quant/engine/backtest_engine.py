@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 from typing import Optional, Sequence
 
@@ -16,6 +17,8 @@ from quant.portfolio.portfolio import Portfolio
 from quant.portfolio.position_sizer import FixedFractionPositionSizer, PositionSizer
 from quant.risk.atr_stop import AtrStopPolicy
 from quant.strategy.base import Strategy
+
+logger = logging.getLogger(__name__)
 
 
 class BacktestEngine:
@@ -45,6 +48,7 @@ class BacktestEngine:
         self._has_run = True
         bars = list(self.data_feed)
         self._validate_bars(bars)
+        logger.info("回测开始：symbol=%s bars=%d", self.portfolio.symbol, len(bars))
         history: list[Bar] = []
         pending: list[OrderIntent] = []
         terminal_pending: list[PendingOrder] = []
@@ -55,50 +59,38 @@ class BacktestEngine:
         stop_policy = AtrStopPolicy()
 
         for bar_index, bar in enumerate(bars):
-            stop_attempted = False
-            if (
-                stop_policy.trigger_reference(bar) == bar.open
-                and stop_policy.stop_price is not None
-            ):
-                stop_order = self._create_stop_order(
-                    bar, stop_policy, "order-{:06d}".format(next_order_number)
-                )
-                if stop_order is not None:
-                    next_order_number += 1
-                    self._execute_order(stop_order, bar, stop_policy, trades, order_results)
-                    stop_attempted = True
+            next_order_number, stop_attempted = self._try_execute_stop(
+                bar, stop_policy, next_order_number, trades, order_results, gap_only=True,
+            )
 
             due_intents = pending
             pending = []
             for intent in due_intents:
                 # 意图来自上一根完整收盘 Bar；本根 Open 执行，避免同收盘前视。
-                order = self._create_order(intent, bar, "order-{:06d}".format(next_order_number))
+                order_id = "order-{:06d}".format(next_order_number)
+                order, rejection_reason = self._create_order(intent, bar, order_id)
                 if order is None:
-                    target_holding = self.portfolio.position_quantity > 0
-                    if intent.target_fraction != (1 if target_holding else 0):
+                    if rejection_reason:
                         order_results.append(
-                            OrderResult(
-                                "order-{:06d}".format(next_order_number),
-                                OrderStatus.REJECTED,
-                                "当前资金或持仓无法形成有效数量的订单。",
-                            )
+                            OrderResult(order_id, OrderStatus.REJECTED, rejection_reason)
                         )
+                        logger.info("订单拒绝：%s %s", order_id, rejection_reason)
                         next_order_number += 1
                     continue
                 next_order_number += 1
-                self._execute_order(
+                filled = self._execute_order(
                     order, bar, stop_policy, trades, order_results,
                     intent.protective_stop_distance,
                 )
+                if filled and order.side == Side.BUY:
+                    # Open 止损仅属于旧持仓；同日重新买入的新仓仍须检查本根 Low。
+                    stop_attempted = False
 
             # 日线 OHLC 无法知道盘中路径；按 Low 触及止损处理，并以止损价作为参考价。
-            if not stop_attempted and stop_policy.trigger_reference(bar) is not None:
-                stop_order = self._create_stop_order(
-                    bar, stop_policy, "order-{:06d}".format(next_order_number)
+            if not stop_attempted:
+                next_order_number, _ = self._try_execute_stop(
+                    bar, stop_policy, next_order_number, trades, order_results,
                 )
-                if stop_order is not None:
-                    next_order_number += 1
-                    self._execute_order(stop_order, bar, stop_policy, trades, order_results)
 
             # 当日成交入账后按 Close 估值，快照因此同时反映成交与收盘市值。
             account = self.portfolio.mark_to_market(bar.close)
@@ -116,6 +108,8 @@ class BacktestEngine:
 
             intents = self.strategy.on_bar(bar, tuple(history))
             for intent in intents:
+                if intent.symbol != bar.symbol or intent.signal_time != bar.datetime:
+                    raise ValueError("策略意图必须匹配当前 Bar 的标的和信号时间。")
                 if bar_index + 1 < len(bars):
                     pending.append(intent)
                     continue
@@ -134,6 +128,7 @@ class BacktestEngine:
                     next_order_number += 1
             history.append(bar)
 
+        logger.info("回测结束：trades=%d final_equity=%s", len(trades), equity[-1].portfolio_value)
         return BacktestResult(
             initial_cash=self.portfolio.initial_cash,
             trades=tuple(trades),
@@ -150,22 +145,50 @@ class BacktestEngine:
         trades: list[Trade],
         order_results: list[OrderResult],
         stop_distance: Optional[float] = None,
-    ) -> None:
+    ) -> bool:
         """由 Broker 成交、Portfolio 入账，并同步入账成功后的止损状态。"""
         result = self.broker.execute(order, bar)
         order_results.append(result)
-        if result.status != OrderStatus.FILLED or result.trade is None:
-            return
+        if result.status != OrderStatus.FILLED:
+            logger.info("订单未成交：%s %s", result.order_id, result.reason)
+            return False
+        if result.trade is None:
+            raise ValueError("FILLED 结果必须包含 Trade。")
+        if (
+            order.side == Side.BUY and stop_distance is not None
+            and result.trade.price <= stop_distance
+        ):
+            reason = "实际买入成交价不足以形成正的保护止损价。"
+            order_results[-1] = OrderResult(order.order_id, OrderStatus.REJECTED, reason)
+            logger.info("成交入账拒绝：%s %s", order.order_id, reason)
+            return False
         try:
             self.portfolio.apply_trade(result.trade)
         except ValueError as exc:
             order_results[-1] = OrderResult(order.order_id, OrderStatus.REJECTED, str(exc))
-            return
+            logger.info("成交入账拒绝：%s %s", order.order_id, exc)
+            return False
         trades.append(result.trade)
         if order.side == Side.BUY and stop_distance is not None:
             stop_policy.activate(result.trade.price, stop_distance, result.trade.signal_time)
         elif order.side == Side.SELL:
             stop_policy.clear()
+        logger.debug("成交入账：%s %s quantity=%s", order.order_id, order.side, order.quantity)
+        return True
+
+    def _try_execute_stop(
+        self, bar: Bar, stop_policy: AtrStopPolicy, next_order_number: int,
+        trades: list[Trade], order_results: list[OrderResult], gap_only: bool = False,
+    ) -> tuple[int, bool]:
+        """统一止损提交路径，返回下一订单编号与是否尝试当前持仓止损。"""
+        reference = stop_policy.trigger_reference(bar)
+        if reference is None or (gap_only and reference != bar.open):
+            return next_order_number, False
+        order = self._create_stop_order(bar, stop_policy, "order-{:06d}".format(next_order_number))
+        if order is None:
+            return next_order_number, False
+        self._execute_order(order, bar, stop_policy, trades, order_results)
+        return next_order_number + 1, True
 
     def _create_stop_order(
         self, bar: Bar, stop_policy: AtrStopPolicy, order_id: str
@@ -187,8 +210,10 @@ class BacktestEngine:
             stop_price=stop_policy.stop_price,
         )
 
-    def _create_order(self, intent: OrderIntent, bar: Bar, order_id: str) -> Optional[Order]:
-        """执行时才按当前 Open 和账户现金确定数量，不读取未来价格。"""
+    def _create_order(
+        self, intent: OrderIntent, bar: Bar, order_id: str,
+    ) -> tuple[Optional[Order], str]:
+        """执行时定量；无订单且原因为空表示已达到目标，否则为具体拒绝原因。"""
         if intent.signal_time >= bar.datetime:
             raise ValueError("订单只能在信号之后的 Bar 执行。")
         if intent.symbol != bar.symbol:
@@ -196,19 +221,22 @@ class BacktestEngine:
         current_quantity = self.portfolio.position_quantity
         side = Side.BUY if intent.target_fraction == 1 else Side.SELL
         if intent.target_fraction == 1 and current_quantity > 0:
-            return None
+            return None, ""
         if intent.target_fraction == 0 and current_quantity <= 0:
-            return None
+            return None, ""
 
         execution_reference = bar.open
-        quoted_price = self.broker.quote(side, execution_reference)
         quantity: float
         if side == Side.BUY:
+            try:
+                quoted_price = self.broker.quote(side, execution_reference)
+            except ValueError as exc:
+                return None, str(exc)
             if (
                 intent.protective_stop_distance is not None
                 and quoted_price <= intent.protective_stop_distance
             ):
-                return None
+                return None, "保护止损距离必须小于实际买入报价。"
             # 保持比例预算的十进制口径，再由 Broker 按佣金模型检查整股可负担数量。
             equity = self.portfolio.mark_to_market(execution_reference).portfolio_value
             target_quantity = self.position_sizer.calculate_quantity(
@@ -216,14 +244,17 @@ class BacktestEngine:
             )
             equity_budget = self.position_sizer.allocation_budget(equity)
             cash_budget = min(equity_budget, Decimal(str(self.portfolio.cash)))
-            affordable_quantity = self.broker.max_affordable_integer_quantity(
-                float(cash_budget), quoted_price
-            )
+            try:
+                affordable_quantity = self.broker.max_affordable_integer_quantity(
+                    float(cash_budget), quoted_price
+                )
+            except ValueError as exc:
+                return None, str(exc)
             quantity = min(target_quantity, affordable_quantity)
         else:
             quantity = current_quantity
         if quantity <= 0:
-            return None
+            return None, "当前仓位额度或含佣金可用现金不足以买入一股。"
         return Order(
             order_id=order_id,
             symbol=intent.symbol,
@@ -232,7 +263,7 @@ class BacktestEngine:
             order_type=OrderType.MARKET,
             signal_time=intent.signal_time,
             execution_time=bar.datetime,
-        )
+        ), ""
 
     def _validate_bars(self, bars: Sequence[Bar]) -> None:
         if not bars:

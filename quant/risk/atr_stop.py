@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Optional
 
 from quant.core.bar import Bar
+from quant.core.validation import validate_datetime, validate_positive_finite
 
 
 class AtrStopPolicy:
@@ -15,9 +16,11 @@ class AtrStopPolicy:
 
     def activate(self, entry_price: float, distance: float, signal_time: datetime) -> None:
         """在买入成交入账后锚定止损价。"""
+        validate_positive_finite(entry_price, "entry_price")
+        validate_positive_finite(distance, "distance")
+        validate_datetime(signal_time, "signal_time")
         stop_price = entry_price - distance
-        if stop_price <= 0:
-            raise ValueError("ATR 止损价必须为正数。")
+        validate_positive_finite(stop_price, "stop_price")
         self.stop_price = stop_price
         self.signal_time = signal_time
 

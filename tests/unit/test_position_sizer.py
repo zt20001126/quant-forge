@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 from datetime import datetime, timedelta
-from typing import List, Sequence
+from typing import Iterator, List, Sequence
 
 from quant.broker.broker import SimulatedBroker
 from quant.broker.commission import PercentageCommission
@@ -58,7 +58,7 @@ class FixedFractionPositionSizerTest(unittest.TestCase):
         ]
 
         class Feed:
-            def __iter__(self):
+            def __iter__(self) -> Iterator[Bar]:
                 return iter(bars)
 
         portfolio = Portfolio(100_000, "AAA")
@@ -83,7 +83,7 @@ class FixedFractionPositionSizerTest(unittest.TestCase):
         ]
 
         class Feed:
-            def __iter__(self):
+            def __iter__(self) -> Iterator[Bar]:
                 return iter(bars)
 
         engine = BacktestEngine(
@@ -132,7 +132,7 @@ class FixedFractionPositionSizerTest(unittest.TestCase):
         ]
 
         class Feed:
-            def __iter__(self):
+            def __iter__(self) -> Iterator[Bar]:
                 return iter(bars)
 
         engine = BacktestEngine(

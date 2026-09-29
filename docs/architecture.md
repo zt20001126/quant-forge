@@ -42,16 +42,16 @@ V0.1 只有一个 Broker 实现，Engine 对其具体类型 `SimulatedBroker` �
 ## 领域对象
 
 - `Bar`：冻结的 OHLCV 值对象，验证标的、时间、正价格、非负成交量与 OHLC 关系。
-- `OrderIntent`：策略发出的目标仓位，V0.1 仅为 0 或 1，并可在买入意图中携带可选保护止损距离。
+- `OrderIntent`：策略发出的方向目标，V0.1 仅为 0（空仓）或 1（多头），实际比例由仓位器决定；可携带买入保护止损距离。
 - `Order`：执行数量、方向、类型和执行时间已确定的市价单或止损市价单。
-- `OrderResult`：成交或拒绝状态；成功成交时携带 Trade。
+- `OrderResult`：只有 FILLED 可且必须携带 Trade，且关联订单 ID 必须一致；拒绝结果保留具体原因。
 - `Trade`：Broker 生成的不可变成交记录，包含订单关联、成交价/量、佣金及信号/执行时间。
 - `Position`：Portfolio 持有的可变多头持仓状态；市值在估值时按价格计算。
 - `EquitySnapshot` / `BacktestResult`：只读回测输出，供展示与 Analytics 使用。
 
 ## 指标计算
 
-`quant.indicators.true_range(bars)` 接受同一标的、按时间严格递增的 Bar 序列。首根 Bar 没有前收盘价，TR 定义为 `High - Low`；之后取 `max(High - Low, abs(High - PreviousClose), abs(Low - PreviousClose))`。`average_true_range(bars, period)` 使用 Wilder 算法：首个 ATR 为前 `period` 个 TR 的简单平均，随后 `ATR_t = ((period - 1) × ATR_(t-1) + TR_t) / period`。暖机期返回 `None`。MA Cross 可选配置周期和倍数，在信号 Bar 仅基于当前及过去数据计算 `ATR × multiplier`，未暖机时延迟买入意图。
+`quant.indicators.true_range(bars)` 接受同一标的、按时间严格递增的 Bar 序列。首根 Bar 没有前收盘价，TR 定义为 `High - Low`；之后取 `max(High - Low, abs(High - PreviousClose), abs(Low - PreviousClose))`。`average_true_range(bars, period)` 使用 Wilder 算法：首个 ATR 为前 `period` 个 TR 的简单平均，随后 `ATR_t = ((period - 1) × ATR_(t-1) + TR_t) / period`。暖机期返回 `None`。MA Cross 的 SMA 仅计算所需窗口，只有新的保护入场意图需要计算 ATR；ATR 未暖机或为零时保持先前目标并延迟入场。ATR 距离基于当前及过去数据，不含未来行情。
 
 ## 生命周期和时间语义
 
@@ -72,14 +72,20 @@ Signal Time 是策略观察到完整 Bar 的时点；Execution Time 必须晚于
 
 末根 Bar 产生的信号因无下一根执行机会而过期，不得按末日 Close 回填成交。买入意图没有可确定数量，`PendingOrder.quantity` 为 `None`；卖出意图记录待卖出的当前持仓数量。默认 `FixedFractionPositionSizer` 比例为 1.0，以兼容原有 Engine 默认满仓行为。可注入 `RiskBasedPositionSizer`，数量为 `floor(Equity × RiskFraction / StopDistance)`，买入预算再受可用现金、佣金和滑点后报价限制；风险定仓要求意图包含有效止损距离。ATR 止损在买入成交后以实际成交价减距离锚定，仅支持固定止损。日线若 Open 跌穿止损按 Open 成交参考价，若 Open 高于止损而 Low 触及则按止损价；Broker 后续应用卖出滑点和佣金。日线 OHLC 不揭示盘中路径，跳空与费用可能导致实际损失超过名义风险预算。
 
+Engine 立即校验策略意图的标的与当前 Bar 时间，末根意图也不能跳过校验。自定义策略的到期 BUY 若在跳空止损清仓后形成新仓，新仓须接受当前 Low 的保护止损检查；旧仓止损被拒绝且未发生新买入时，同根不重复提交该止损。Engine 的两阶段止损共用提交路径，订单不能形成时记录具体拒绝原因。库通过标准 logging 输出可选生命周期与拒绝诊断，不配置全局 handler。
+
+仓位比例为只读配置，避免公开比例与 Decimal 计算值不一致。Broker 的零现金报价返回零，负现金、非有限值及非法价格抛出 ValueError；执行阶段非法价格/费用作为拒绝结果输出。保护性实际成交价必须能形成正止损价，校验成功后才允许入账。成本模型报价仍须满足费用非负、随数量单调不减的约定。
+
 ## 账户与绩效约束
 
 - 买入现金变化为 `cash -= price × quantity + commission`；持仓加权均价使用含费成本。
 - 卖出现金变化为 `cash += price × quantity - commission`；不得卖出超过持仓的数量。
+- 股数严格校验，无超卖容差；底层允许小数股与部分卖出，任何正残余持仓保留成本和市值。现金独立使用 `CASH_ROUNDING_TOLERANCE=1e-8`，仅将容差内负现金归零。计算结果须有限，失败不得部分更新账户。
 - 估值为 `portfolio_value = cash + quantity × mark_price`。
 - 初始资金作为收益与回撤的起始值；年化收益按 252 个交易日复合年化。
 - 最大回撤相对包含初始资金在内的历史权益峰值计算并以负数表示。
 - Sharpe 使用日超额收益样本标准差并按 252 日年化；默认无风险年利率为零。
+- 绩效遇到无法表示的年化或 Sharpe 数值时抛出明确 ValueError，不返回非有限指标。
 
 这些是假设明确的研究指标，不构成对真实市场成交或收益的保证。
 
@@ -89,7 +95,7 @@ Signal Time 是策略观察到完整 Bar 的时点；Execution Time 必须晚于
 
 ## 测试与工具
 
-测试放在 `tests/unit/` 和 `tests/integration/`，通过 pytest 发现；行为基准包含非法数据、指标暖机、策略信号、成交成本、账户不变量、下一根 Open 执行、末根信号过期和 CSV 到绩效结果的集成流程。开发工具由 `pyproject.toml` 的 `dev` 依赖提供：pytest、ruff、mypy。标准命令见 README。
+测试放在 `tests/unit/` 和 `tests/integration/`，通过 pytest 发现；行为基准包含非法数据、指标暖机、策略信号、成交成本、账户不变量、下一根 Open 执行、末根信号过期和 CSV 到绩效结果的集成流程。新增边界回归覆盖零 ATR、新仓止损、超卖、残余持仓、非法模型输出、订单结果一致性与绩效溢出。mypy 覆盖 quant/examples/tests 并要求函数注解；GitHub Actions 配置 Python 3.8/3.10/3.12 检查。开发工具由 `pyproject.toml` 的 `dev` 依赖提供：pytest、ruff、mypy。标准命令见 README；CI 的实际通过状态以执行记录为准。
 
 ## 已知范围边界
 

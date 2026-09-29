@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Optional, Sequence
 
 from matplotlib.dates import AutoDateLocator, ConciseDateFormatter
 from matplotlib.figure import Figure
@@ -13,7 +13,7 @@ from quant.engine.models import BacktestResult
 
 
 def plot_backtest(
-    bars: Sequence[Bar], result: BacktestResult, show: bool = True
+    bars: Sequence[Bar], result: BacktestResult, show: bool = True, title: Optional[str] = None,
 ) -> Figure:
     """显示回测图：收盘价方向、真实成交点和每日组合权益。"""
     from matplotlib import pyplot as plt
@@ -49,7 +49,9 @@ def plot_backtest(
         price_label,
         date_label,
     ) = labels
-    title = "MA Cross 回测：价格与成交信号" if cjk_font else "MA Cross Backtest: Price and Trades"
+    chart_title = title or (
+        "回测：价格与成交信号" if cjk_font else "Backtest: Price and Trades"
+    )
 
     dates = [bar.datetime for bar in bars]
     close_prices = [bar.close for bar in bars]
@@ -100,7 +102,7 @@ def plot_backtest(
     equity_axis.set_ylabel(equity_label, fontproperties=font_properties)
     equity_axis.set_xlabel(date_label, fontproperties=font_properties)
     price_axis.set_ylabel(price_label, fontproperties=font_properties)
-    price_axis.set_title(title, fontproperties=font_properties)
+    price_axis.set_title(chart_title, fontproperties=font_properties)
     price_axis.legend(loc="best", prop=font_properties)
     equity_axis.legend(loc="best", prop=font_properties)
     for axis in (price_axis, equity_axis):

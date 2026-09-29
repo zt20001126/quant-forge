@@ -5,6 +5,8 @@ All notable changes to QuantForge will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- 增加公开边界与止损生命周期回归测试，以及 Python 3.8/3.10/3.12 的 pytest/ruff/mypy CI 检查配置。
+- 示例集中参数 `ExampleConfig`、可选图表标题和标准 logging 回测诊断。
 - 可选 ATR 固定保护止损与基于止损距离的风险比例整股定仓，止损触发经 Broker 成本模型及 Portfolio 入账。
 - 独立 True Range 与 Wilder ATR 指标计算，支持周期配置和明确的暖机期结果。
 - MA Cross 示例的静态回测图：收盘价涨跌、实际买卖成交点与组合权益曲线。
@@ -12,8 +14,12 @@ All notable changes to QuantForge will be documented in this file.
 - 固定比例仓位管理 `FixedFractionPositionSizer`，支持整股向下取整和比例配置。
 
 ### Changed
+- 仓位器比例为只读配置；Broker 报价参数、止损激活和订单结果一致性校验更严格，订单拒绝记录具体原因。
+- MA 策略仅计算所需 SMA 窗口，目标不变时不重算 ATR；mypy 覆盖业务代码、示例和测试并要求完整函数注解。
 
 ### Fixed
+- 修复合法零 ATR 行情导致保护入场异常、跳空止损后同日新仓跳过保护，以及容差超卖产生额外现金的问题。
+- 保留小数股剩余持仓；拒绝非有限费用/报价，阻止非法或溢出成交部分更新账户，并明确绩效溢出错误。
 - 修复固定比例仓位在浮点边界下少买整股，以及卖出后容差内负现金导致绩效拒绝的问题。
 
 ### Removed

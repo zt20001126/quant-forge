@@ -9,7 +9,9 @@ from typing import Optional, Protocol
 class PositionSizer(Protocol):
     """根据账户权益与执行价格计算整数买入数量。"""
 
-    def allocation_budget(self, equity: float) -> Decimal: ...
+    def allocation_budget(self, equity: float) -> Decimal:
+        """返回含买入费用的资金额度；风险预算另由数量公式约束。"""
+        ...
 
     def calculate_quantity(
         self, equity: float, price: float, stop_distance: Optional[float] = None
@@ -35,10 +37,15 @@ class FixedFractionPositionSizer:
             raise ValueError("position_ratio 必须是有限数值。") from exc
         if not ratio.is_finite():
             raise ValueError("position_ratio 必须是有限数值。")
-        self.position_ratio = float(position_ratio)
         self._ratio = ratio
 
+    @property
+    def position_ratio(self) -> float:
+        """只读资金比例；修改配置应重新创建仓位器。"""
+        return float(self._ratio)
+
     def allocation_budget(self, equity: float) -> Decimal:
+        """返回可投入本金与买入费用的总额度。"""
         try:
             equity_value = Decimal(str(equity))
         except (InvalidOperation, ValueError):
@@ -89,8 +96,12 @@ class RiskBasedPositionSizer:
             raise ValueError("risk_fraction 必须是有限数值。") from exc
         if not risk.is_finite() or not 0 < risk <= 1:
             raise ValueError("risk_fraction 必须是 (0, 1] 内的有限数值。")
-        self.risk_fraction = float(risk)
         self._risk = risk
+
+    @property
+    def risk_fraction(self) -> float:
+        """只读风险比例，与内部十进制计算使用同一份配置。"""
+        return float(self._risk)
 
     def allocation_budget(self, equity: float) -> Decimal:
         """风险仓位仍可使用全部可用权益，实际数量另受风险预算限制。"""

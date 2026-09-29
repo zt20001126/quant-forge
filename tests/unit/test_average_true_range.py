@@ -2,6 +2,7 @@
 
 import unittest
 from datetime import datetime, timedelta
+from typing import cast
 
 from quant.core.bar import Bar
 from quant.indicators.average_true_range import average_true_range, true_range
@@ -25,7 +26,9 @@ class AverageTrueRangeTest(unittest.TestCase):
         values = average_true_range(self.bars, period=2)
 
         self.assertEqual(values[:2], [None, 2.5])
-        self.assertAlmostEqual(values[2], 3.75)
+        last_value = values[2]
+        assert last_value is not None
+        self.assertAlmostEqual(last_value, 3.75)
 
     def test_period_one_matches_true_range_for_every_bar(self) -> None:
         self.assertEqual(average_true_range(self.bars, period=1), [2, 3, 5])
@@ -44,7 +47,8 @@ class AverageTrueRangeTest(unittest.TestCase):
     def test_period_must_be_a_positive_integer(self) -> None:
         for period in (0, -1, True, 1.5):
             with self.subTest(period=period), self.assertRaises(ValueError):
-                average_true_range(self.bars, period=period)
+                # 测试有意传入不满足静态类型的周期，核查运行时拒绝。
+                average_true_range(self.bars, period=cast(int, period))
 
     def test_bars_must_be_ordered_and_belong_to_one_symbol(self) -> None:
         with self.assertRaises(ValueError):
