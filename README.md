@@ -13,7 +13,7 @@ QuantForge 是独立的个人量化研究与回测项目。当前版本为 **V0.
 - 单标的多头 Portfolio，支持固定比例/风险比例整股仓位计算、成交入账及每日估值。
 - 回测交易记录、订单结果、未执行订单、Equity 曲线。
 - 总收益、年化收益、最大回撤和 Sharpe Ratio。
-- 示例运行后显示收盘价涨跌、买卖成交点和组合权益曲线。
+- 静态 Matplotlib 回测图，以及可缩放、可悬停的 Plotly 交互图。
 
 V0.1 不含 RiskManager 模块；非法数量、资金不足、禁止负持仓等边界由现有领域校验、Broker 和 Portfolio 处理。
 
@@ -98,7 +98,7 @@ python -m pip install -e ".[dev]"
 python -m examples.ma_cross_backtest
 ```
 
-示例默认读取 `data/stock_real.csv`，输出交易数、期末权益及绩效指标，随后弹出回测图表窗口。图中上半部分显示收盘价、逐日涨跌和买卖成交，下半部分显示组合权益。关闭图表窗口后程序退出。也可以在 Python 中传入自己的 CSV：
+示例默认读取 `data/stock_real.csv`，输出交易数、期末权益及绩效指标，随后弹出 Matplotlib 静态图。也可以在 Python 中传入自己的 CSV：
 
 ```python
 from examples.ma_cross_backtest import run_example
@@ -110,6 +110,17 @@ result, metrics = run_example(csv_path, symbol="DEMO")
 plot_backtest(list(CSVDataFeed(csv_path, "DEMO")), result)
 print(len(result.trades), metrics.total_return)
 ```
+
+需要交互式查看时使用独立的 Plotly 绘图函数。价格、权益、回撤分区共享时间轴；可滚轮缩放、拖动或用底部区间滑块选择日期范围，放大后可逐日查看 OHLCV 和成交详情：
+
+```python
+from quant.visualization import plot_interactive_backtest
+
+figure = plot_interactive_backtest(list(CSVDataFeed(csv_path, "DEMO")), result)
+figure.show()
+```
+
+MA 等指标和每日止损价可分别通过 `indicators={"MA5": values}` 与 `stop_prices=values` 传入，序列顺序须与行情一致。图表只显示调用方提供的数据；当前回测结果不保存逐日止损线，MA Cross 也不向外暴露指标序列。成交悬停显示成交价、数量和佣金；滑点金额未被 Trade 单独记录，成交价已包含滑点影响。
 
 示例参数通过冻结的 `ExampleConfig` 集中配置，原有调用方式保持有效：
 
@@ -127,7 +138,7 @@ config = ExampleConfig(
 result, metrics = run_example("data/stock_real.csv", config=config)
 ```
 
-需要自定义图名时使用 `plot_backtest(bars, result, title="My Strategy")`。需要运行日志时，由应用入口配置标准库 `logging`；库本身不修改全局日志设置。
+需要自定义图名时使用 `plot_backtest(bars, result, title="My Strategy")` 或 `plot_interactive_backtest(bars, result, title="My Strategy")`。需要运行日志时，由应用入口配置标准库 `logging`；库本身不修改全局日志设置。
 
 CSV 必须包含 `date,open,high,low,close,volume` 列。文件读入后会按时间排序；空数据、重复时间、非法数值及无效 OHLCV 会报错。
 
