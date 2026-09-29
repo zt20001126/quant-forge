@@ -98,7 +98,7 @@ python -m pip install -e ".[dev]"
 python -m examples.ma_cross_backtest
 ```
 
-示例默认读取 `data/stock_real.csv`，输出交易数、期末权益及绩效指标，随后弹出 Matplotlib 静态图。也可以在 Python 中传入自己的 CSV：
+示例默认读取 `data/stock_real.csv`，输出交易数、期末权益及绩效指标，随后在浏览器打开 Plotly 交互图。也可以在 Python 中传入自己的 CSV：
 
 ```python
 from examples.ma_cross_backtest import run_example
