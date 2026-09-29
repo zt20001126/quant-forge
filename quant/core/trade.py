@@ -27,7 +27,10 @@ class Trade:
     execution_time: datetime
 
     def __post_init__(self) -> None:
-        if not self.trade_id or not self.order_id:
+        if (
+            not isinstance(self.trade_id, str) or not self.trade_id.strip()
+            or not isinstance(self.order_id, str) or not self.order_id.strip()
+        ):
             raise ValueError("trade_id 和 order_id 不能为空。")
         validate_symbol(self.symbol)
         if not isinstance(self.side, Side):

@@ -32,11 +32,18 @@ select = ["E", "F", "I"]
 
 [tool.mypy]
 python_version = "3.8"
-files = ["quant"]
+files = ["quant", "examples", "tests"]
 check_untyped_defs = true
+disallow_untyped_defs = true
 warn_unused_ignores = true
 no_implicit_optional = true
+explicit_package_bases = true
 
 [[tool.mypy.overrides]]
 module = ["matplotlib.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["pytest", "_pytest.*"]
+# 目标 Python 3.8 的项目检查不解析当前环境较新 pytest 的内部运行库。
+follow_imports = "skip"

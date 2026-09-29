@@ -13,7 +13,7 @@ from quant.core.validation import validate_datetime, validate_positive_finite, v
 
 @dataclass(frozen=True)
 class OrderIntent:
-    """策略目标仓位意图；V0.1 仅接受 0（空仓）或 1（满仓）。"""
+    """策略方向意图：0 为空仓，1 为多头；实际投入比例由仓位器决定。"""
 
     symbol: str
     target_fraction: float
@@ -45,7 +45,7 @@ class Order:
     stop_price: Optional[float] = None
 
     def __post_init__(self) -> None:
-        if not self.order_id:
+        if not isinstance(self.order_id, str) or not self.order_id.strip():
             raise ValueError("order_id 不能为空。")
         validate_symbol(self.symbol)
         if not isinstance(self.side, Side):
@@ -77,7 +77,16 @@ class OrderResult:
     trade: Optional[Trade] = None
 
     def __post_init__(self) -> None:
-        if not self.order_id:
+        if not isinstance(self.order_id, str) or not self.order_id.strip():
             raise ValueError("order_id 不能为空。")
         if not isinstance(self.status, OrderStatus):
             raise ValueError("status 必须是 OrderStatus 枚举。")
+        if not isinstance(self.reason, str):
+            raise ValueError("reason 必须是字符串。")
+        if self.status == OrderStatus.FILLED:
+            if not isinstance(self.trade, Trade):
+                raise ValueError("FILLED 结果必须包含 Trade。")
+            if self.trade.order_id != self.order_id:
+                raise ValueError("Trade 必须关联同一订单。")
+        elif self.trade is not None:
+            raise ValueError("未成交结果不能包含 Trade。")

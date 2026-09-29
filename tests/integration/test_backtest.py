@@ -1,10 +1,12 @@
 """CSV 到绩效摘要的新框架集成测试。"""
 
+from __future__ import annotations
+
 import tempfile
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Sequence
+from typing import Iterator, Sequence
 
 from quant.analytics.metrics import calculate_performance
 from quant.broker.broker import SimulatedBroker
@@ -45,8 +47,17 @@ class EndToEndBacktestTest(unittest.TestCase):
             result = engine.run()
             metrics = calculate_performance(result)
             self.assertEqual(len(result.equity_curve), len(rows))
-            self.assertTrue(result.trades)
-            self.assertTrue(-1 <= metrics.total_return)
+            self.assertEqual(len(result.trades), 1)
+            trade = result.trades[0]
+            self.assertEqual(trade.side, Side.BUY)
+            self.assertEqual(trade.quantity, 1994)
+            self.assertAlmostEqual(trade.price, 5.01)
+            self.assertAlmostEqual(trade.commission, 9.98994)
+            self.assertEqual(trade.signal_time, datetime(2024, 1, 4))
+            self.assertEqual(trade.execution_time, datetime(2024, 1, 5))
+            self.assertAlmostEqual(result.equity_curve[-1].cash, 0.07006)
+            self.assertAlmostEqual(result.equity_curve[-1].portfolio_value, 7976.07006)
+            self.assertAlmostEqual(metrics.total_return, -0.202392994)
             self.assertAlmostEqual(
                 result.equity_curve[-1].portfolio_value,
                 result.equity_curve[-1].cash + result.equity_curve[-1].market_value,
@@ -61,7 +72,7 @@ class EndToEndBacktestTest(unittest.TestCase):
         ]
 
         class Feed:
-            def __iter__(self):
+            def __iter__(self) -> Iterator[Bar]:
                 return iter(bars)
 
         class ProtectedEntryStrategy:

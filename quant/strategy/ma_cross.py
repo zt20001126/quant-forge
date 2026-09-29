@@ -1,7 +1,8 @@
-"""双均线交叉策略，目标仓位为满仓或空仓。"""
+"""双均线方向策略，表达多头或空仓目标。"""
 
 from __future__ import annotations
 
+import math
 from typing import Optional, Sequence
 
 from quant.core.bar import Bar
@@ -11,7 +12,7 @@ from quant.indicators.moving_average import simple_moving_average
 
 
 class MACrossStrategy:
-    """依据截至当前 Bar 的收盘历史产生空仓/满仓目标意图。"""
+    """依据截至当前 Bar 的均线产生方向意图，不决定投入比例。"""
 
     def __init__(
         self,
@@ -20,7 +21,10 @@ class MACrossStrategy:
         atr_period: Optional[int] = None,
         atr_multiplier: Optional[float] = None,
     ) -> None:
-        if isinstance(short_window, bool) or isinstance(long_window, bool):
+        if (
+            isinstance(short_window, bool) or not isinstance(short_window, int)
+            or isinstance(long_window, bool) or not isinstance(long_window, int)
+        ):
             raise ValueError("均线窗口必须是正整数。")
         if short_window <= 0 or long_window <= 0 or short_window >= long_window:
             raise ValueError("均线窗口必须为正整数，且短期窗口小于长期窗口。")
@@ -47,28 +51,30 @@ class MACrossStrategy:
         if not bars or bars[-1] != bar:
             bars.append(bar)
         closes = [item.close for item in bars if item.symbol == bar.symbol]
-        short_values = simple_moving_average(closes, self.short_window)
-        long_values = simple_moving_average(closes, self.long_window)
+        # SMA 只需要最近一个窗口；避免每根 Bar 重算全部历史均线。
+        short_values = simple_moving_average(closes[-self.short_window:], self.short_window)
+        long_values = simple_moving_average(closes[-self.long_window:], self.long_window)
         short_value = short_values[-1]
         long_value = long_values[-1]
         if short_value is None or long_value is None:
             return []
 
         target = 1 if short_value > long_value else 0
+        if target == self._last_target:
+            return []
         stop_distance: Optional[float] = None
         if target == 1 and self.atr_period is not None and self.atr_multiplier is not None:
             atr_value = average_true_range(bars, self.atr_period)[-1]
-            if atr_value is None:
-                # ATR 未暖机时延迟买入意图，保持原目标直到产生可执行保护距离。
+            if atr_value is None or atr_value <= 0:
+                # 零波动是合法行情，但无法形成保护距离；保持目标以便之后重试。
                 return []
             stop_distance = atr_value * self.atr_multiplier
+            if not math.isfinite(stop_distance):
+                raise ValueError("ATR 止损距离超出可表示的数值范围。")
         if self._last_target is None:
             self._last_target = target
             if target == 1:
                 return [OrderIntent(bar.symbol, 1, bar.datetime, stop_distance)]
             return []
-        if target == self._last_target:
-            return []
-
         self._last_target = target
         return [OrderIntent(bar.symbol, target, bar.datetime, stop_distance)]

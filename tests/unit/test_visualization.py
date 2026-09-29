@@ -44,7 +44,7 @@ class VisualizationTest(unittest.TestCase):
             price_axis, equity_axis = figure.axes
             self.assertIn(
                 price_axis.get_title(),
-                ("MA Cross 回测：价格与成交信号", "MA Cross Backtest: Price and Trades"),
+                ("回测：价格与成交信号", "Backtest: Price and Trades"),
             )
             self.assertIn(
                 {collection.get_label() for collection in price_axis.collections},
@@ -56,7 +56,23 @@ class VisualizationTest(unittest.TestCase):
             self.assertIn(equity_axis.lines[0].get_label(), ("组合权益", "Portfolio value"))
             self.assertEqual(list(equity_axis.lines[0].get_ydata()), [100, 110, 105])
         finally:
-            figure.clear()
+            from matplotlib import pyplot as plt
+
+            plt.close(figure)
+
+    def test_plot_uses_custom_title_and_releases_figure(self) -> None:
+        from matplotlib import pyplot as plt
+
+        bar = Bar("AAA", datetime(2024, 1, 1), 10, 10, 10, 10, 100)
+        result = BacktestResult(100, (), (
+            EquitySnapshot(bar.datetime, 100, "AAA", 0, 10, 0, 100),
+        ), (), ())
+        figure = plot_backtest([bar], result, show=False, title="Acceptance")
+        try:
+            self.assertEqual(figure.axes[0].get_title(), "Acceptance")
+        finally:
+            plt.close(figure)
+        self.assertNotIn(figure.number, plt.get_fignums())
 
     def test_plot_rejects_missing_bars_or_equity(self) -> None:
         with self.assertRaises(ValueError):

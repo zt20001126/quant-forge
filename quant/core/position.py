@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from quant.core.validation import validate_non_negative_finite, validate_symbol
+from quant.core.validation import validate_finite, validate_non_negative_finite, validate_symbol
 
 
 @dataclass
@@ -18,10 +18,13 @@ class Position:
         validate_symbol(self.symbol)
         validate_non_negative_finite(self.quantity, "quantity")
         validate_non_negative_finite(self.average_price, "average_price")
+        validate_finite(self.realized_pnl, "realized_pnl")
         if self.quantity > 0 and self.average_price <= 0:
             raise ValueError("非空持仓必须具有正的平均成本。")
 
     def market_value(self, price: float) -> float:
         """按给定估值价格计算市值；市值不作为可变状态重复保存。"""
         validate_non_negative_finite(price, "price")
-        return self.quantity * price
+        value = self.quantity * price
+        validate_non_negative_finite(value, "market_value")
+        return value

@@ -4,7 +4,7 @@ import unittest
 from datetime import datetime, timedelta
 
 from quant.broker.broker import SimulatedBroker
-from quant.broker.commission import PercentageCommission
+from quant.broker.commission import FixedCommission, PercentageCommission
 from quant.broker.slippage import FixedSlippage
 from quant.core import Bar, Order, OrderStatus, OrderType, Side, Trade
 from quant.portfolio.portfolio import Portfolio
@@ -24,12 +24,15 @@ class BrokerPortfolioTest(unittest.TestCase):
         self.assertEqual(result.status, OrderStatus.FILLED)
         assert result.trade is not None
         self.assertEqual(result.trade.price, 11)
+        self.assertAlmostEqual(result.trade.commission, 1000 / 101)
         portfolio.apply_trade(result.trade)
         snapshot = portfolio.mark_to_market(11)
         self.assertAlmostEqual(snapshot.cash, 0)
+        self.assertAlmostEqual(snapshot.average_price, 11.11)
+        self.assertAlmostEqual(snapshot.portfolio_value, 1000 / 1.01)
         self.assertAlmostEqual(snapshot.portfolio_value, snapshot.cash + snapshot.market_value)
 
-    def test_rejects_short_sale_and_duplicate_trade(self) -> None:
+    def test_rejects_short_sale_without_changing_cash(self) -> None:
         start = datetime(2024, 1, 1)
         later = start + timedelta(days=1)
         portfolio = Portfolio(1000, "AAA")
@@ -42,8 +45,6 @@ class BrokerPortfolioTest(unittest.TestCase):
         self.assertEqual(portfolio.cash, 1000)
 
     def test_max_affordable_quantity_accounts_for_fixed_commission(self) -> None:
-        from quant.broker.commission import FixedCommission
-
         broker = SimulatedBroker(FixedCommission(5), FixedSlippage(0))
         quantity = broker.max_affordable_quantity(105, 10)
         self.assertAlmostEqual(quantity, 10)
@@ -54,8 +55,6 @@ class BrokerPortfolioTest(unittest.TestCase):
         self.assertEqual(broker.max_affordable_integer_quantity(0.3, 0.1), 3)
 
     def test_max_affordable_integer_quantity_includes_fixed_commission(self) -> None:
-        from quant.broker.commission import FixedCommission
-
         broker = SimulatedBroker(FixedCommission(5), FixedSlippage(0))
 
         self.assertEqual(broker.max_affordable_integer_quantity(105, 10), 10)

@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Tuple
+from typing import Literal, Optional, Tuple
 
 from quant.core.enums import Side
 from quant.core.order import OrderResult
@@ -16,7 +16,7 @@ class EquitySnapshot:
     timestamp: datetime
     cash: float
     symbol: str
-    quantity: Optional[float]
+    quantity: float
     close_price: float
     market_value: float
     portfolio_value: float
@@ -24,12 +24,14 @@ class EquitySnapshot:
 
 @dataclass(frozen=True)
 class PendingOrder:
+    """缺少后续执行 Bar 的终态意图；买入数量尚不能确定。"""
+
     order_id: str
     symbol: str
     side: Side
     quantity: Optional[float]
     signal_time: datetime
-    status: str
+    status: Literal["EXPIRED_NO_NEXT_BAR"]
 
 
 @dataclass(frozen=True)

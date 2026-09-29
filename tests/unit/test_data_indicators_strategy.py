@@ -1,5 +1,7 @@
 """Data、Indicator 和 Strategy 单元测试。"""
 
+from __future__ import annotations
+
 import tempfile
 import unittest
 from datetime import datetime, timedelta
@@ -59,7 +61,7 @@ class DataIndicatorStrategyTest(unittest.TestCase):
             for i, c in enumerate(closes)
         ]
         emitted = []
-        history = []
+        history: list[Bar] = []
         for bar in bars:
             emitted.extend(strategy.on_bar(bar, history))
             history.append(bar)
@@ -69,7 +71,7 @@ class DataIndicatorStrategyTest(unittest.TestCase):
     def test_ma_cross_emits_exit_when_short_average_falls_below_long(self) -> None:
         strategy = MACrossStrategy(short_window=2, long_window=3)
         closes = [1, 2, 4, 3, 2]
-        history = []
+        history: list[Bar] = []
         emitted = []
         for index, close in enumerate(closes):
             bar = Bar(
@@ -83,7 +85,7 @@ class DataIndicatorStrategyTest(unittest.TestCase):
     def test_ma_cross_can_attach_atr_stop_distance_to_entry_intent(self) -> None:
         strategy = MACrossStrategy(2, 3, atr_period=2, atr_multiplier=2)
         closes = [3, 2, 1, 4]
-        history = []
+        history: list[Bar] = []
         intents = []
         for index, close in enumerate(closes):
             bar = Bar(
@@ -100,13 +102,15 @@ class DataIndicatorStrategyTest(unittest.TestCase):
 
         self.assertEqual(len(intents), 1)
         self.assertEqual(intents[0].target_fraction, 1)
-        self.assertIsNotNone(intents[0].protective_stop_distance)
-        self.assertGreater(intents[0].protective_stop_distance, 0)
+        distance = intents[0].protective_stop_distance
+        assert distance is not None
+        # TR=[2,2,1.9,4]，Wilder ATR2 最后为 2.975，再乘保护倍数 2。
+        self.assertAlmostEqual(distance, 5.95)
 
     def test_atr_warmup_delays_protected_entry_without_losing_signal(self) -> None:
         strategy = MACrossStrategy(2, 3, atr_period=5, atr_multiplier=2)
         closes = [3, 2, 1, 4, 5]
-        history = []
+        history: list[Bar] = []
         intents = []
         for index, close in enumerate(closes):
             bar = Bar(
@@ -123,7 +127,9 @@ class DataIndicatorStrategyTest(unittest.TestCase):
 
         self.assertEqual(len(intents), 1)
         self.assertEqual(intents[0].signal_time, history[-1].datetime)
-        self.assertGreater(intents[0].protective_stop_distance, 0)
+        distance = intents[0].protective_stop_distance
+        assert distance is not None
+        self.assertAlmostEqual(distance, 4.76)
 
 
 if __name__ == "__main__":
