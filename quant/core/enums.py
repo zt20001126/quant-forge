@@ -10,6 +10,7 @@ class Side(str, Enum):
 
 class OrderType(str, Enum):
     MARKET = "MARKET"
+    STOP_MARKET = "STOP_MARKET"
 
 
 class OrderStatus(str, Enum):

@@ -14,6 +14,7 @@ from quant.data.base import DataFeed
 from quant.engine.models import BacktestResult, EquitySnapshot, PendingOrder
 from quant.portfolio.portfolio import Portfolio
 from quant.portfolio.position_sizer import FixedFractionPositionSizer, PositionSizer
+from quant.risk.atr_stop import AtrStopPolicy
 from quant.strategy.base import Strategy
 
 
@@ -32,7 +33,9 @@ class BacktestEngine:
         self.strategy = strategy
         self.broker = broker
         self.portfolio = portfolio
-        self.position_sizer = (position_sizer if position_sizer is not None else FixedFractionPositionSizer())
+        self.position_sizer = (
+            position_sizer if position_sizer is not None else FixedFractionPositionSizer()
+        )
         self._has_run = False
 
     def run(self) -> BacktestResult:
@@ -49,8 +52,22 @@ class BacktestEngine:
         trades: list[Trade] = []
         order_results: list[OrderResult] = []
         equity: list[EquitySnapshot] = []
+        stop_policy = AtrStopPolicy()
 
         for bar_index, bar in enumerate(bars):
+            stop_attempted = False
+            if (
+                stop_policy.trigger_reference(bar) == bar.open
+                and stop_policy.stop_price is not None
+            ):
+                stop_order = self._create_stop_order(
+                    bar, stop_policy, "order-{:06d}".format(next_order_number)
+                )
+                if stop_order is not None:
+                    next_order_number += 1
+                    self._execute_order(stop_order, bar, stop_policy, trades, order_results)
+                    stop_attempted = True
+
             due_intents = pending
             pending = []
             for intent in due_intents:
@@ -69,16 +86,19 @@ class BacktestEngine:
                         next_order_number += 1
                     continue
                 next_order_number += 1
-                result = self.broker.execute(order, bar)
-                order_results.append(result)
-                if result.status == OrderStatus.FILLED and result.trade is not None:
-                    try:
-                        self.portfolio.apply_trade(result.trade)
-                    except ValueError as exc:
-                        rejected = OrderResult(order.order_id, OrderStatus.REJECTED, str(exc))
-                        order_results[-1] = rejected
-                    else:
-                        trades.append(result.trade)
+                self._execute_order(
+                    order, bar, stop_policy, trades, order_results,
+                    intent.protective_stop_distance,
+                )
+
+            # 日线 OHLC 无法知道盘中路径；按 Low 触及止损处理，并以止损价作为参考价。
+            if not stop_attempted and stop_policy.trigger_reference(bar) is not None:
+                stop_order = self._create_stop_order(
+                    bar, stop_policy, "order-{:06d}".format(next_order_number)
+                )
+                if stop_order is not None:
+                    next_order_number += 1
+                    self._execute_order(stop_order, bar, stop_policy, trades, order_results)
 
             # 当日成交入账后按 Close 估值，快照因此同时反映成交与收盘市值。
             account = self.portfolio.mark_to_market(bar.close)
@@ -122,6 +142,51 @@ class BacktestEngine:
             pending_orders=tuple(terminal_pending),
         )
 
+    def _execute_order(
+        self,
+        order: Order,
+        bar: Bar,
+        stop_policy: AtrStopPolicy,
+        trades: list[Trade],
+        order_results: list[OrderResult],
+        stop_distance: Optional[float] = None,
+    ) -> None:
+        """由 Broker 成交、Portfolio 入账，并同步入账成功后的止损状态。"""
+        result = self.broker.execute(order, bar)
+        order_results.append(result)
+        if result.status != OrderStatus.FILLED or result.trade is None:
+            return
+        try:
+            self.portfolio.apply_trade(result.trade)
+        except ValueError as exc:
+            order_results[-1] = OrderResult(order.order_id, OrderStatus.REJECTED, str(exc))
+            return
+        trades.append(result.trade)
+        if order.side == Side.BUY and stop_distance is not None:
+            stop_policy.activate(result.trade.price, stop_distance, result.trade.signal_time)
+        elif order.side == Side.SELL:
+            stop_policy.clear()
+
+    def _create_stop_order(
+        self, bar: Bar, stop_policy: AtrStopPolicy, order_id: str
+    ) -> Optional[Order]:
+        """把活动保护止损转成当前 Bar 的全仓止损市价单。"""
+        if self.portfolio.position_quantity <= 0 or stop_policy.stop_price is None:
+            return None
+        signal_time = stop_policy.signal_time
+        if signal_time is None or signal_time >= bar.datetime:
+            return None
+        return Order(
+            order_id=order_id,
+            symbol=bar.symbol,
+            side=Side.SELL,
+            quantity=self.portfolio.position_quantity,
+            order_type=OrderType.STOP_MARKET,
+            signal_time=signal_time,
+            execution_time=bar.datetime,
+            stop_price=stop_policy.stop_price,
+        )
+
     def _create_order(self, intent: OrderIntent, bar: Bar, order_id: str) -> Optional[Order]:
         """执行时才按当前 Open 和账户现金确定数量，不读取未来价格。"""
         if intent.signal_time >= bar.datetime:
@@ -139,10 +204,17 @@ class BacktestEngine:
         quoted_price = self.broker.quote(side, execution_reference)
         quantity: float
         if side == Side.BUY:
+            if (
+                intent.protective_stop_distance is not None
+                and quoted_price <= intent.protective_stop_distance
+            ):
+                return None
             # 保持比例预算的十进制口径，再由 Broker 按佣金模型检查整股可负担数量。
             equity = self.portfolio.mark_to_market(execution_reference).portfolio_value
-            target_quantity = self.position_sizer.calculate_quantity(equity, quoted_price)
-            equity_budget = Decimal(str(equity)) * Decimal(str(self.position_sizer.position_ratio))
+            target_quantity = self.position_sizer.calculate_quantity(
+                equity, quoted_price, intent.protective_stop_distance
+            )
+            equity_budget = self.position_sizer.allocation_budget(equity)
             cash_budget = min(equity_budget, Decimal(str(self.portfolio.cash)))
             affordable_quantity = self.broker.max_affordable_integer_quantity(
                 float(cash_budget), quoted_price

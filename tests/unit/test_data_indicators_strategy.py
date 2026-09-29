@@ -80,6 +80,51 @@ class DataIndicatorStrategyTest(unittest.TestCase):
             history.append(bar)
         self.assertEqual([intent.target_fraction for intent in emitted], [1, 0])
 
+    def test_ma_cross_can_attach_atr_stop_distance_to_entry_intent(self) -> None:
+        strategy = MACrossStrategy(2, 3, atr_period=2, atr_multiplier=2)
+        closes = [3, 2, 1, 4]
+        history = []
+        intents = []
+        for index, close in enumerate(closes):
+            bar = Bar(
+                "AAA",
+                datetime(2024, 3, 1) + timedelta(days=index),
+                close,
+                close + 1,
+                max(close - 1, 0.1),
+                close,
+                100,
+            )
+            intents.extend(strategy.on_bar(bar, history))
+            history.append(bar)
+
+        self.assertEqual(len(intents), 1)
+        self.assertEqual(intents[0].target_fraction, 1)
+        self.assertIsNotNone(intents[0].protective_stop_distance)
+        self.assertGreater(intents[0].protective_stop_distance, 0)
+
+    def test_atr_warmup_delays_protected_entry_without_losing_signal(self) -> None:
+        strategy = MACrossStrategy(2, 3, atr_period=5, atr_multiplier=2)
+        closes = [3, 2, 1, 4, 5]
+        history = []
+        intents = []
+        for index, close in enumerate(closes):
+            bar = Bar(
+                "AAA",
+                datetime(2024, 4, 1) + timedelta(days=index),
+                close,
+                close + 1,
+                max(close - 1, 0.1),
+                close,
+                100,
+            )
+            intents.extend(strategy.on_bar(bar, history))
+            history.append(bar)
+
+        self.assertEqual(len(intents), 1)
+        self.assertEqual(intents[0].signal_time, history[-1].datetime)
+        self.assertGreater(intents[0].protective_stop_distance, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -7,9 +7,10 @@ QuantForge 是独立的个人量化研究与回测项目。当前版本为 **V0.
 ## V0.1 当前能力
 
 - CSV 单标的日线 OHLCV 读取、校验与时间排序。
-- 简单移动平均和 MA Cross 空仓/满仓目标仓位策略。
+- 简单移动平均、True Range、Wilder ATR 指标计算和 MA Cross 空仓/满仓目标仓位策略。
+- 可选 MA Cross ATR 止损距离、风险比例定仓和 ATR 固定保护止损。
 - 市价单模拟、比例/固定佣金、无/固定/比例滑点。
-- 单标的多头 Portfolio，支持整股仓位计算、成交入账及每日估值。
+- 单标的多头 Portfolio，支持固定比例/风险比例整股仓位计算、成交入账及每日估值。
 - 回测交易记录、订单结果、未执行订单、Equity 曲线。
 - 总收益、年化收益、最大回撤和 Sharpe Ratio。
 - 示例运行后显示收盘价涨跌、买卖成交点和组合权益曲线。
@@ -30,11 +31,13 @@ CSVDataFeed → Bar → Strategy → OrderIntent → BacktestEngine
                                         BacktestResult → Analytics
 ```
 
-`quant/core` 保存领域对象；`data` 负责行情读取和校验；`indicators` 计算指标；`strategy` 产生意图；`broker` 执行订单并计算交易成本；`portfolio` 独占账户状态；`engine` 编排生命周期；`analytics` 只消费结果。V0.1 不预建未使用的 `risk` 或 `config` 空模块。
+`quant/core` 保存领域对象；`data` 负责行情读取和校验；`indicators` 计算指标；`strategy` 产生意图；`risk` 持有 ATR 保护止损规则；`broker` 执行订单并计算交易成本；`portfolio` 独占账户状态；`engine` 编排生命周期；`analytics` 只消费结果。未建立通用 RiskManager 或空配置模块。
+
+`true_range(bars)` 与 `average_true_range(bars, period)` 使用 Wilder 算法计算 TR/ATR。配置 MA Cross 的 `atr_period` 和 `atr_multiplier` 后，买入意图会附带 `ATR × multiplier` 止损距离；ATR 未就绪时策略延迟买入信号。
 
 ## 仓位管理 / Position Sizing
 
-仓位管理根据账户权益、配置比例和执行价格，把策略的买入意图换算成可提交的买入股数。Strategy 只表达 BUY/SELL（当前通过目标仓位 `1`/`0` 表达），不决定买入数量。当前支持 `FixedFractionPositionSizer`：每次买入最多分配账户权益的固定比例，股数按整股向下取整。
+仓位管理根据账户权益、配置比例/风险和执行价格，把策略的买入意图换算成可提交的买入股数。Strategy 只表达 BUY/SELL（当前通过目标仓位 `1`/`0` 表达），不决定买入数量。支持固定比例与风险比例两种仓位器。
 
 ```text
 Quantity = floor((Equity × PositionRatio) / Price)
@@ -54,7 +57,7 @@ engine = BacktestEngine(
 )
 ```
 
-`position_ratio` 必须满足 `0 < position_ratio <= 1`。当前版本只支持单标的、多头、整股和固定比例；手续费包含在每次分配额度内。不支持小数股、分批加仓、Kelly、风险平价、波动率/ATR 定仓或多资产资金分配。
+`position_ratio` 与 `risk_fraction` 必须满足 `(0, 1]`。风险定仓公式为 `floor(Equity × RiskFraction / StopDistance)`，例如权益 `10000`、风险比例 `1%`、止损距离 `4` 时买入 `25` 股。最终数量还受现金、滑点报价和佣金约束。买入成交后，固定止损价为实际买入价减去止损距离；日线跳空时按 Open 作为参考价，盘中 Low 触及时按止损价作为参考价，再应用卖出滑点和佣金。跳空、滑点、费用可能令实际损失超过风险预算；止损不追踪。
 
 ## 项目结构
 
@@ -62,7 +65,8 @@ engine = BacktestEngine(
 quant/                  可安装的 Python 包
   core/                 Bar、Order、Trade、Position 和校验
   data/                 DataFeed 协议和 CSV 适配
-  indicators/           简单移动平均
+  indicators/           SMA、True Range、Wilder ATR
+  risk/                 ATR 保护止损状态及触发规则
   strategy/             策略协议和 MA Cross
   broker/               市价执行、佣金和滑点
   portfolio/            现金、持仓、仓位计算、成交入账和估值
@@ -118,7 +122,8 @@ mypy quant
 ## 回测假设
 
 - **Signal Time / Execution Time**：策略在 T 日完整 Bar 可见后产生信号；订单最早于下一根可用 Bar（通常 T+1）的 Open 执行。不会用 T 日 Close 产生信号后又假设按该 Close 成交。
-- **定量时点**：Engine 等执行 Bar 到达后，按该 Bar 的 Open 估值权益，并用滑点报价、固定比例仓位器、佣金和可用现金确定整股买入数量。
+- **定量时点**：Engine 等执行 Bar 到达后，按该 Bar 的 Open 估值权益，并用滑点报价、仓位器、佣金和可用现金确定整股买入数量；风险定仓要求买入意图包含止损距离。
+- **ATR 止损**：在保护性买入成交入账后固定止损价；跳空按 Open、盘中触及按止损价确定 Broker 参考价，再应用滑点和佣金。
 - **成交成本**：Broker 按方向应用滑点，并在最终 Trade 上记录一次佣金。可买数量计算中的佣金调用用于报价，不会重复入账。
 - **账户与估值**：Portfolio 根据成交 Trade 更新现金与持仓；每根 Bar 的交易处理后按 Close 估值。权益等于现金加持仓市值。
 - **末根信号**：没有下一根 Bar 可执行的意图记为 `EXPIRED_NO_NEXT_BAR`；该未执行信号不改变账户。
@@ -126,7 +131,7 @@ mypy quant
 
 ## 当前限制
 
-仅支持单标的日线 CSV、MA Cross、市价单和多头单持仓；仓位管理只支持固定比例与整股，且不支持部分卖出、做空、杠杆、多资产、复权/公司行为处理、风险管理器、参数优化、Walk Forward、事件驱动、数据库、Web UI 或实盘交易。真实研究结果受数据质量、费用假设和成交模型影响。
+仅支持单标的日线 CSV、MA Cross、开仓市价单和 ATR 固定保护止损、多头单持仓与整股仓位；不支持部分卖出、做空、杠杆、多资产、复权/公司行为处理、通用 RiskManager、追踪止损、参数优化、Walk Forward、事件驱动、数据库、Web UI 或实盘交易。真实研究结果受数据质量、费用假设和成交模型影响。
 
 ## Roadmap
 

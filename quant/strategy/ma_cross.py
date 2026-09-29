@@ -6,19 +6,39 @@ from typing import Optional, Sequence
 
 from quant.core.bar import Bar
 from quant.core.order import OrderIntent
+from quant.indicators.average_true_range import average_true_range
 from quant.indicators.moving_average import simple_moving_average
 
 
 class MACrossStrategy:
     """依据截至当前 Bar 的收盘历史产生空仓/满仓目标意图。"""
 
-    def __init__(self, short_window: int = 5, long_window: int = 20) -> None:
+    def __init__(
+        self,
+        short_window: int = 5,
+        long_window: int = 20,
+        atr_period: Optional[int] = None,
+        atr_multiplier: Optional[float] = None,
+    ) -> None:
         if isinstance(short_window, bool) or isinstance(long_window, bool):
             raise ValueError("均线窗口必须是正整数。")
         if short_window <= 0 or long_window <= 0 or short_window >= long_window:
             raise ValueError("均线窗口必须为正整数，且短期窗口小于长期窗口。")
         self.short_window = short_window
         self.long_window = long_window
+        if (atr_period is None) != (atr_multiplier is None):
+            raise ValueError("atr_period 与 atr_multiplier 必须同时配置。")
+        if atr_period is not None and (
+            isinstance(atr_period, bool) or not isinstance(atr_period, int) or atr_period <= 0
+        ):
+            raise ValueError("atr_period 必须是正整数。")
+        if atr_multiplier is not None and (
+            isinstance(atr_multiplier, bool) or not isinstance(atr_multiplier, (int, float))
+            or not 0 < atr_multiplier < float("inf")
+        ):
+            raise ValueError("atr_multiplier 必须是正的有限数值。")
+        self.atr_period = atr_period
+        self.atr_multiplier = atr_multiplier
         self._last_target: Optional[int] = None
 
     def on_bar(self, bar: Bar, history: Sequence[Bar]) -> list[OrderIntent]:
@@ -35,13 +55,20 @@ class MACrossStrategy:
             return []
 
         target = 1 if short_value > long_value else 0
+        stop_distance: Optional[float] = None
+        if target == 1 and self.atr_period is not None and self.atr_multiplier is not None:
+            atr_value = average_true_range(bars, self.atr_period)[-1]
+            if atr_value is None:
+                # ATR 未暖机时延迟买入意图，保持原目标直到产生可执行保护距离。
+                return []
+            stop_distance = atr_value * self.atr_multiplier
         if self._last_target is None:
             self._last_target = target
             if target == 1:
-                return [OrderIntent(bar.symbol, 1, bar.datetime)]
+                return [OrderIntent(bar.symbol, 1, bar.datetime, stop_distance)]
             return []
         if target == self._last_target:
             return []
 
         self._last_target = target
-        return [OrderIntent(bar.symbol, target, bar.datetime)]
+        return [OrderIntent(bar.symbol, target, bar.datetime, stop_distance)]
