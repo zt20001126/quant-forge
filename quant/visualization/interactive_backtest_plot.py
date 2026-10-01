@@ -7,6 +7,7 @@ from typing import Mapping, Optional, Sequence
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from quant.analytics.benchmark import BuyAndHoldBenchmarkResult, validate_benchmark_alignment
 from quant.core.bar import Bar
 from quant.core.enums import Side
 from quant.engine.models import BacktestResult
@@ -18,6 +19,7 @@ def plot_interactive_backtest(
     indicators: Optional[Mapping[str, Sequence[Optional[float]]]] = None,
     stop_prices: Optional[Sequence[Optional[float]]] = None,
     title: str = "Backtest",
+    *, benchmark: Optional[BuyAndHoldBenchmarkResult] = None,
 ) -> go.Figure:
     """构建共享时间轴的价格、权益和回撤图。
 
@@ -39,6 +41,13 @@ def plot_interactive_backtest(
         raise ValueError("指标序列长度必须与行情一致。")
     if stop_prices is not None and len(stop_prices) != len(bars):
         raise ValueError("止损序列长度必须与行情一致。")
+    if benchmark is not None:
+        validate_benchmark_alignment(result, benchmark)
+        if any(
+            bar.symbol != snapshot.symbol or bar.close != snapshot.close_price
+            for bar, snapshot in zip(bars, result.equity_curve)
+        ):
+            raise ValueError("绘图行情必须与策略快照逐日一致。")
 
     dates = [bar.datetime for bar in bars]
     equity_values = [snapshot.portfolio_value for snapshot in result.equity_curve]
@@ -129,6 +138,16 @@ def plot_interactive_backtest(
         row=2,
         col=1,
     )
+    if benchmark is not None:
+        figure.add_trace(
+            go.Scatter(
+                x=[point.timestamp for point in benchmark.equity_curve],
+                y=[point.equity_value for point in benchmark.equity_curve],
+                mode="lines", name="Buy & Hold (no costs)",
+                line={"color": "#e67e22", "dash": "dash"},
+            ),
+            row=2, col=1,
+        )
     figure.add_trace(
         go.Scatter(
             x=dates,

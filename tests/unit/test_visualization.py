@@ -2,6 +2,7 @@
 
 import unittest
 from datetime import datetime, timedelta
+from typing import Sequence, cast
 
 import matplotlib
 from quant.core.bar import Bar
@@ -49,7 +50,9 @@ class VisualizationTest(unittest.TestCase):
             self.assertEqual(len(price_axis.collections), 2)
             self.assertEqual(len(price_axis.lines), 1)
             self.assertIn(equity_axis.lines[0].get_label(), ("组合权益", "Portfolio value"))
-            self.assertEqual(list(equity_axis.lines[0].get_ydata()), [100, 110, 105])
+            self.assertEqual(
+                list(cast(Sequence[float], equity_axis.lines[0].get_ydata())), [100, 110, 105],
+            )
         finally:
             from matplotlib import pyplot as plt
 

@@ -18,7 +18,7 @@
 | `quant.broker` | 市价/止损市价订单执行、滑点应用、佣金计算、含费最大可买数量报价 | 策略决策及现金/持仓所有权 |
 | `quant.portfolio` | 现金、单标的持仓、Trade 入账、账户估值；固定比例/风险比例整股数量 | 生成信号、决定成交价、持有止损状态 |
 | `quant.engine` | 推进生命周期、协作公开接口、汇总 Trade/订单结果/权益快照 | MA 计算、撮合公式、佣金公式、绩效算法 |
-| `quant.analytics` | 从 BacktestResult 计算收益、年化收益、最大回撤和 Sharpe | 交易循环或账户修改 |
+| `quant.analytics` | 从权益计算四项绩效；从领域 Bar 生成理论 Buy & Hold 基准并组装对比报告 | 交易循环、模拟基准订单或账户修改 |
 | `quant.visualization` | 读取 Bar 序列与 BacktestResult，展示收盘价方向、成交点和权益曲线 | 修改回测结果、生成信号或更改账户 |
 | `examples` | 组装协作者并展示结果 | 绕过公开边界实现交易规则 |
 
@@ -31,11 +31,11 @@ examples → engine + 具体实现
 examples → visualization
 engine → core + DataFeed/Strategy/PositionSizer 协议 + Broker + Portfolio + ATR Stop Policy
 data / indicators / strategy / broker / portfolio / risk → core
-analytics → engine 的只读结果模型 + 标准库
-visualization → core.Bar + engine.BacktestResult + Matplotlib
+analytics → core.Bar/校验 + engine 的只读结果模型 + 标准库
+visualization → core.Bar + engine.BacktestResult + analytics 的基准结果/对齐校验 + Matplotlib/Plotly
 ```
 
-`core` 不依赖其他业务模块或第三方行情实现。Strategy 依赖领域 Bar/OrderIntent 与指标函数，不依赖 CSV、Broker 或 Portfolio。Engine 通过 DataFeed/Strategy 协议和 Broker/Portfolio 的公开方法编排。Broker 与 Portfolio 之间不互调：Broker 返回 Trade，Engine 将成交交给 Portfolio。Analytics 只接受结果对象；Visualization 只读取行情与回测结果。
+`core` 不依赖其他业务模块或第三方行情实现。Strategy 依赖领域 Bar/OrderIntent 与指标函数，不依赖 CSV、Broker 或 Portfolio。Engine 通过 DataFeed/Strategy 协议和 Broker/Portfolio 的公开方法编排。Broker 与 Portfolio 之间不互调：Broker 返回 Trade，Engine 将成交交给 Portfolio。Analytics 接受只读结果和领域行情生成分析产物；Visualization 只读取行情、回测结果与可选基准。
 
 V0.1 只有一个 Broker 实现，Engine 对其具体类型 `SimulatedBroker` 有显式依赖；目前这不构成抽象缺口，不为尚不存在的第二实现增加额外接口层。
 
@@ -93,9 +93,19 @@ Engine 立即校验策略意图的标的与当前 Bar 时间，末根意图也�
 
 `quant.visualization` 是独立展示层，不修改交易数据或账户状态。`plot_backtest(bars, result)` 提供收盘价、实际成交点和权益的 Matplotlib 静态图；`plot_interactive_backtest` 提供共享时间轴的价格、权益和回撤 Plotly 图，并在价格悬停中显示 Bar 的 OHLCV、在成交点显示 Trade 已保存的成交价、数量、佣金和信号时间。指标与逐日止损价只能由调用方显式提供；当前 Strategy/BacktestResult 不暴露这些逐日序列。Trade 不独立保存滑点金额，故图表仅说明成交价已包含滑点影响，不估算滑点值。
 
+## Buy & Hold Benchmark（V0.2 最小能力，Unreleased）
+
+`quant.analytics.benchmark.calculate_buy_and_hold(bars, initial_cash)` 生成冻结的 `BuyAndHoldBenchmarkResult`，内部为逐日 `BenchmarkEquityPoint(timestamp, equity_value)`。首根 Open 全额理论小数股投入，权益为 `initial_cash × (Close / FirstOpen)`；不计佣金、滑点、利息或分红，末日按 Close 估值而非强制平仓。入场假设在区间开始前确定，不利用首日 Close 决策；首日收益不可丢弃。
+
+`quant.analytics.report.compare_with_buy_and_hold(bars, result, annual_risk_free_rate)` 返回 `BenchmarkComparison`：保留原始 `strategy_result`，附带 `strategy_metrics`、`benchmark_result`、`benchmark_metrics`。基准资金来自原始结果；校验单标的、严格递增、完整长度、逐日时间和快照 Close，不取交集或填值。暖机期纳入双方区间。
+
+应用层读取一次 CSV 并固定同一份 Bar 序列，分别提供给 Engine、Analytics 和图表。BacktestResult 不保存 Open，事后校验不能证明完整 OHLC 一致，因此共享输入是重要约束。`calculate_performance` 包装共用的 `calculate_equity_performance`，双方使用同一 252 日、初始资金、回撤符号和 Sharpe 口径；公式和旧接口不变。
+
+Engine、Strategy、Broker、Portfolio 和原有 BacktestResult 不感知 Benchmark。图表通过可选关键字参数 `benchmark` 展示双权益曲线，并标注无成本口径；不自行生成基准。策略含配置费用和整股约束，与理论基准差值不是纯 Alpha。暂不提供成本基准、公司行为、多资产或外部指数。
+
 ## 测试与工具
 
-测试放在 `tests/unit/` 和 `tests/integration/`，通过 pytest 发现；行为基准包含非法数据、指标暖机、策略信号、成交成本、账户不变量、下一根 Open 执行、末根信号过期和 CSV 到绩效结果的集成流程。新增边界回归覆盖零 ATR、新仓止损、超卖、残余持仓、非法模型输出、订单结果一致性与绩效溢出。mypy 覆盖 quant/examples/tests 并要求函数注解；GitHub Actions 配置 Python 3.8/3.10/3.12 检查。开发工具由 `pyproject.toml` 的 `dev` 依赖提供：pytest、ruff、mypy。标准命令见 README；CI 的实际通过状态以执行记录为准。
+测试放在 `tests/unit/` 和 `tests/integration/`，通过 pytest 发现；行为基准包含非法数据、指标暖机、策略信号、成交成本、账户不变量、下一根 Open 执行、末根信号过期和 CSV 到绩效结果的集成流程。新增边界回归覆盖零 ATR、新仓止损、超卖、残余持仓、非法模型输出、订单结果一致性与绩效溢出。mypy 覆盖 quant/examples/tests 并要求函数注解；GitHub Actions 使用 Python 3.10 检查。开发工具由 `pyproject.toml` 的 `dev` 依赖提供：pytest、ruff、mypy。标准命令见 README；CI 的实际通过状态以执行记录为准。
 
 ## 已知范围边界
 

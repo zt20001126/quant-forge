@@ -7,6 +7,7 @@ from typing import Optional, Sequence
 from matplotlib.dates import AutoDateLocator, ConciseDateFormatter
 from matplotlib.figure import Figure
 
+from quant.analytics.benchmark import BuyAndHoldBenchmarkResult, validate_benchmark_alignment
 from quant.core.bar import Bar
 from quant.core.enums import Side
 from quant.engine.models import BacktestResult
@@ -14,6 +15,7 @@ from quant.engine.models import BacktestResult
 
 def plot_backtest(
     bars: Sequence[Bar], result: BacktestResult, show: bool = True, title: Optional[str] = None,
+    *, benchmark: Optional[BuyAndHoldBenchmarkResult] = None,
 ) -> Figure:
     """显示回测图：收盘价方向、真实成交点和每日组合权益。"""
     from matplotlib import pyplot as plt
@@ -23,6 +25,14 @@ def plot_backtest(
         raise ValueError("绘图行情不能为空。")
     if not result.equity_curve:
         raise ValueError("回测结果缺少权益曲线，无法绘图。")
+    if benchmark is not None:
+        validate_benchmark_alignment(result, benchmark)
+        if len(bars) != len(result.equity_curve) or any(
+            bar.datetime != snapshot.timestamp or bar.symbol != snapshot.symbol
+            or bar.close != snapshot.close_price
+            for bar, snapshot in zip(bars, result.equity_curve)
+        ):
+            raise ValueError("绘图行情必须与策略快照逐日一致。")
 
     installed_fonts = {font.name for font in fontManager.ttflist}
     cjk_font = next(
@@ -85,6 +95,13 @@ def plot_backtest(
         label=equity_label,
     )
     equity_axis.set_ylabel(equity_label, fontproperties=font_properties)
+    if benchmark is not None:
+        # 基准曲线由 Analytics 提供，展示层不自行生成或改变估值。
+        equity_axis.plot(
+            [point.timestamp for point in benchmark.equity_curve],
+            [point.equity_value for point in benchmark.equity_curve],
+            color="#e67e22", linestyle="--", label="Buy & Hold (no costs)",
+        )
     equity_axis.set_xlabel(date_label, fontproperties=font_properties)
     price_axis.set_ylabel(price_label, fontproperties=font_properties)
     price_axis.set_title(chart_title, fontproperties=font_properties)
