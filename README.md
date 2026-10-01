@@ -13,6 +13,7 @@ QuantForge 是独立的个人量化研究与回测项目。当前版本为 **V0.
 - 单标的多头 Portfolio，支持固定比例/风险比例整股仓位计算、成交入账及每日估值。
 - 回测交易记录、订单结果、未执行订单、Equity 曲线。
 - 总收益、年化收益、最大回撤和 Sharpe Ratio。
+- Buy & Hold 理论价格基准、双方四项绩效对比和双权益曲线（V0.2 最小能力，未发布）。
 - 静态 Matplotlib 回测图，以及可缩放、可悬停的 Plotly 交互图。
 
 V0.1 不含 RiskManager 模块；非法数量、资金不足、禁止负持仓等边界由现有领域校验、Broker 和 Portfolio 处理。
@@ -31,7 +32,7 @@ CSVDataFeed → Bar → Strategy → OrderIntent → BacktestEngine
                                         BacktestResult → Analytics
 ```
 
-`quant/core` 保存领域对象；`data` 负责行情读取和校验；`indicators` 计算指标；`strategy` 产生意图；`risk` 持有 ATR 保护止损规则；`broker` 执行订单并计算交易成本；`portfolio` 独占账户状态；`engine` 编排生命周期；`analytics` 只消费结果。未建立通用 RiskManager 或空配置模块。
+`quant/core` 保存领域对象；`data` 负责行情读取和校验；`indicators` 计算指标；`strategy` 产生意图；`risk` 持有 ATR 保护止损规则；`broker` 执行订单并计算交易成本；`portfolio` 独占账户状态；`engine` 编排生命周期；`analytics` 分析结果并从领域行情生成只读理论基准。未建立通用 RiskManager 或空配置模块。
 
 `true_range(bars)` 计算真实波幅，`average_true_range(bars, period)` 使用 Wilder 平滑计算 ATR。配置 MA Cross 的 `atr_period` 和 `atr_multiplier` 后，买入意图会附带 `ATR × multiplier` 止损距离；ATR 未就绪或为零时策略延迟保护性买入信号，等待有效的正距离。
 
@@ -73,7 +74,7 @@ quant/                  可安装的 Python 包
   broker/               市价执行、佣金和滑点
   portfolio/            现金、持仓、仓位计算、成交入账和估值
   engine/               回测编排、结果与权益快照
-  analytics/            绩效指标
+  analytics/            绩效指标、Buy & Hold 理论基准及对比报告
 tests/unit/             单元测试
 tests/integration/      CSV 到结果的集成测试
 examples/               MA Cross 可运行示例
@@ -98,7 +99,7 @@ python -m pip install -e ".[dev]"
 python -m examples.ma_cross_backtest
 ```
 
-示例默认读取 `data/stock_real.csv`，输出交易数、期末权益及绩效指标，随后在浏览器打开 Plotly 交互图。也可以在 Python 中传入自己的 CSV：
+示例默认读取一次 `data/stock_real.csv`，输出交易数、期末权益及策略／Buy & Hold 四项绩效对比，随后在浏览器打开双权益曲线的 Plotly 交互图。也可以在 Python 中传入自己的 CSV：
 
 ```python
 from examples.ma_cross_backtest import run_example
@@ -142,6 +143,35 @@ result, metrics = run_example("data/stock_real.csv", config=config)
 
 CSV 必须包含 `date,open,high,low,close,volume` 列。文件读入后会按时间排序；空数据、重复时间、非法数值及无效 OHLCV 会报错。
 
+## Buy & Hold Benchmark
+
+基准固定在首根 Bar 的 Open 全额投入，允许理论小数股，每日 Close 估值，末日不强制卖出；不计佣金、滑点、现金利息或分红。权益为 `initial_cash × (Close / FirstOpen)`，包含首日 Open→Close 收益及策略暖机期。策略权益包含其配置的成交成本和整股余量，因此双方差值不能直接解释为 Alpha。
+
+```python
+from examples.ma_cross_backtest import run_benchmark_example
+
+comparison = run_benchmark_example("data/stock_real.csv", symbol="DEMO")
+print(comparison.strategy_metrics)
+print(comparison.benchmark_metrics)
+```
+
+自定义协作者时，固定同一份行情后交给 Engine 和 Analytics。对比报告拒绝日期、标的、长度或 Close 不一致的数据，不自动截短、补值或按策略首次交易日裁剪：
+
+```python
+from quant.analytics import compare_with_buy_and_hold
+from quant.data.csv_feed import CSVDataFeed
+from quant.visualization import plot_interactive_backtest
+
+bars = tuple(CSVDataFeed("data/stock_real.csv", "DEMO"))
+# 将 bars 作为 BacktestEngine 的 data_feed；result = engine.run()
+comparison = compare_with_buy_and_hold(bars, result, annual_risk_free_rate=0.0)
+figure = plot_interactive_backtest(bars, result, benchmark=comparison.benchmark_result)
+# 静态接口也支持 plot_backtest(bars, result, benchmark=comparison.benchmark_result)
+figure.show()
+```
+
+双方通过 `calculate_equity_performance(initial_cash, equity_values, annual_risk_free_rate)` 使用同一绩效公式。原有 `calculate_performance(result)` 和 `run_example()` 返回接口保留；空曲线报错，单日 Sharpe 为零，年化按快照数量与 252 日计算，初始资金参与回撤峰值。
+
 ## 检查与测试
 
 ```bash
@@ -180,7 +210,7 @@ conda run -n agent python -m mypy
 
 ## Roadmap
 
-V0.2 及以后能力按 [V0.1 TODO 与演进记录](docs/V0.1_TODO.md) 和长期架构指南规划，均为 **Planned**，不属于当前支持范围。
+V0.2 最小 Buy & Hold Benchmark 已实现于工作区并记入 `[Unreleased]`，包版本仍为 0.1.0，未发布 V0.2。其余演进能力按 [V0.1 TODO 与演进记录](docs/V0.1_TODO.md) 和长期架构指南规划，属于 **Planned**。
 
 ## 开发规范与文档
 
